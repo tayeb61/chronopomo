@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14151a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Capture">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Chronopomo · Capture</title>
+<style>
+  :root {
+    --bg: #14151a;
+    --bg-raised: #1b1c23;
+    --ink: #f2efea;
+    --ink-dim: #8b8d97;
+    --ember: #e2a03f;
+    --ember-dim: #4a3a1e;
+    --ok: #6fcf97;
+    --field-border: #2b2d36;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+             env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    min-height: 100dvh;
+  }
+
+  .label {
+    padding: 22px 24px 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .label b { color: var(--ink); font-weight: 700; }
+
+  .status {
+    padding: 0 24px;
+    min-height: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  .status.error { color: #e07a5f; }
+  .status.ok { color: var(--ok); }
+  .status.queued { color: var(--ember); }
+
+  .pending-bar {
+    padding: 0 24px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .pending-bar.show { display: flex; }
+
+  .pending-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--ember-dim);
+    color: var(--ember);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .pending-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  .pending-chevron {
+    margin-left: auto;
+    color: var(--ink-dim);
+    font-size: 12px;
+    transition: transform 160ms ease;
+  }
+
+  .pending-chevron.open { transform: rotate(180deg); }
+
+  .pending-list {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 24px 0;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .pending-list.open { display: flex; }
+
+  .pending-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--field-border);
+  }
+
+  .pending-item-text {
+    flex: 1;
+    font-size: 14px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pending-item-time {
+    font-size: 11px;
+    color: var(--ink-dim);
+    flex-shrink: 0;
+  }
+
+  .pending-item-remove {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    border: none;
+    background: transparent;
+    color: var(--ink-dim);
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .pending-item-remove:active {
+    background: var(--field-border);
+  }
+
+  .field-wrap {
+    flex: 1;
+    display: flex;
+    padding: 16px 20px;
+  }
+
+  textarea {
+    flex: 1;
+    resize: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 24px;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    caret-color: var(--ember);
+  }
+
+  textarea::placeholder {
+    color: #45474f;
+    font-weight: 400;
+  }
+
+  .action-bar {
+    padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
+  }
+
+  button.send {
+    width: 100%;
+    border: none;
+    border-radius: 18px;
+    padding: 18px 0;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #1a1206;
+    background: var(--ember-dim);
+    transition: background 160ms ease, transform 120ms ease;
+  }
+
+  button.send:not(:disabled) {
+    background: var(--ember);
+  }
+
+  button.send:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  button.send:disabled {
+    color: #55524a;
+    background: var(--bg-raised);
+    border: 1px solid var(--field-border);
+  }
+
+  button.send.sent {
+    background: var(--ok);
+    color: #0e2016;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button.send { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="label">Chronopomo <b>· Capture</b></div>
+
+  <div class="field-wrap">
+    <textarea
+      id="taskInput"
+      placeholder="What's on your mind?"
+      autocapitalize="sentences"
+      autocorrect="on"
+      spellcheck="true"
+      rows="1"
+    ></textarea>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="pending-bar" id="pendingBar">
+    <span class="pending-badge" id="pendingBadge">0</span>
+    <span class="pending-label">Waiting to send</span>
+    <span class="pending-chevron" id="pendingChevron">▾</span>
+  </div>
+  <div class="pending-list" id="pendingList"></div>
+
+  <div class="action-bar">
+    <button class="send" id="sendBtn" disabled>Capture</button>
+  </div>
+
+<script>
+  const input = document.getElementById('taskInput');
+  const btn = document.getElementById('sendBtn');
+
+  function refreshButtonState() {
+    // empty-input guard — mirrors the MacroDroid constraint we built:
+    // whitespace-only text does not count as something to send
+    const hasContent = input.value.trim().length > 0;
+    btn.disabled = !hasContent;
+  }
+
+  input.addEventListener('input', refreshButtonState);
+
+  // opens blank and focused every time — no repeat of the
+  // "shows the last task" bug we hit in MacroDroid, since this
+  // field is never pre-filled from any stored value to begin with
+  window.addEventListener('load', () => {
+    input.value = '';
+    refreshButtonState();
+    input.focus();
+  });
+
+  // also reset on becoming visible again (e.g. switching back from
+  // another app), so a stale draft never lingers if the page was
+  // merely backgrounded rather than fully reloaded
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      input.focus();
+    }
+  });
+
+  const CONFIG = {
+    ntfy: {
+      topic: 'chronopomo-eadbb5a0e38f5b5fcb2c470655769006'
+    }
+  };
+
+  const statusEl = document.getElementById('status');
+
+  async function sendNtfy(text) {
+    const url = `https://ntfy.sh/${CONFIG.ntfy.topic}`;
+    const res = await fetch(url, { method: 'POST', body: text });
+    if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
+  }
+
+  // -----------------------------------------------------------------
+  // Offline queue (IndexedDB) — a failed/offline send is saved here
+  // instead of just sitting unsent in the text field. Survives a full
+  // page reload or the tab being killed, since it's real durable
+  // storage rather than a JS variable. A tiny 'meta' store alongside
+  // it holds the ntfy topic, written on every load, so the Service
+  // Worker (a separate JS context with no access to CONFIG above) can
+  // read the current topic on its own when a background sync fires.
+  // -----------------------------------------------------------------
+  const DB_NAME = 'chronopomo-capture';
+  const DB_VERSION = 1;
+
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('pending')) {
+          db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('meta')) {
+          db.createObjectStore('meta', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function writeMeta(key, value) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('meta', 'readwrite');
+      tx.objectStore('meta').put({ key, value });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function queueCapture(text) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending', 'readwrite');
+      tx.objectStore('pending').add({ text, createdAt: Date.now() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function getPending() {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending', 'readonly');
+      const req = tx.objectStore('pending').getAll();
+      req.onsuccess = () => resolve(req.result.sort((a, b) => a.createdAt - b.createdAt));
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function deletePending(id) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending', 'readwrite');
+      tx.objectStore('pending').delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // --- pending list UI ---
+  const pendingBar = document.getElementById('pendingBar');
+  const pendingBadge = document.getElementById('pendingBadge');
+  const pendingChevron = document.getElementById('pendingChevron');
+  const pendingListEl = document.getElementById('pendingList');
+  let pendingListOpen = false;
+
+  function relativeTime(ts) {
+    const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    if (mins < 1) return 'just now';
+    if (mins === 1) return '1 min ago';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins / 60);
+    return hrs === 1 ? '1 hr ago' : `${hrs} hr ago`;
+  }
+
+  async function renderPendingList() {
+    const items = await getPending();
+    if (items.length === 0) {
+      pendingBar.classList.remove('show');
+      pendingListEl.classList.remove('open');
+      pendingListEl.innerHTML = '';
+      pendingListOpen = false;
+      return;
+    }
+    pendingBar.classList.add('show');
+    pendingBadge.textContent = String(items.length);
+    pendingListEl.innerHTML = '';
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'pending-item';
+
+      const textEl = document.createElement('span');
+      textEl.className = 'pending-item-text';
+      textEl.textContent = item.text;
+
+      const timeEl = document.createElement('span');
+      timeEl.className = 'pending-item-time';
+      timeEl.textContent = relativeTime(item.createdAt);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pending-item-remove';
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Discard';
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await deletePending(item.id);
+        renderPendingList();
+      });
+
+      row.append(textEl, timeEl, removeBtn);
+      pendingListEl.appendChild(row);
+    }
+  }
+
+  pendingBar.addEventListener('click', () => {
+    pendingListOpen = !pendingListOpen;
+    pendingListEl.classList.toggle('open', pendingListOpen);
+    pendingChevron.classList.toggle('open', pendingListOpen);
+  });
+
+  // --- flushing the queue ---
+  let flushing = false;
+
+  async function flushQueue() {
+    if (flushing) return;
+    flushing = true;
+    try {
+      const items = await getPending();
+      for (const item of items) {
+        try {
+          await sendNtfy(item.text);
+          await deletePending(item.id);
+        } catch (err) {
+          // Still offline (or ntfy's briefly down) — stop here rather
+          // than hammer every remaining item; the next trigger (online
+          // event, visibility change, timer, or background sync) will
+          // pick up where this left off.
+          break;
+        }
+      }
+    } finally {
+      flushing = false;
+      renderPendingList();
+    }
+  }
+
+  function scheduleBackgroundSync() {
+    // Covers the case where the app/tab isn't open when connectivity
+    // comes back — e.g. phone was offline, PWA gets closed, network
+    // returns later. Feature-detected: Safari/iOS has no SyncManager,
+    // so this silently no-ops there and the online/visibility/timer
+    // triggers below are what carry the queue on those platforms.
+    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.sync.register('flush-queue'))
+        .catch(() => {});
+    }
+  }
+
+  window.addEventListener('online', flushQueue);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') flushQueue();
+  });
+  // Soft fallback poll while the tab is actually open, since not every
+  // platform fires a reliable 'online' event and background sync isn't
+  // universal — this only does anything when there's something queued.
+  setInterval(() => { if (!pendingBar.classList.contains('show')) return; flushQueue(); }, 20000);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  async function capture() {
+    const text = input.value.trim();
+    if (!text) return; // guard, mirrors button disabled state
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    statusEl.textContent = '';
+    statusEl.className = 'status';
+
+    try {
+      if (!navigator.onLine) throw new Error('offline');
+      await sendNtfy(text);
+
+      btn.classList.add('sent');
+      btn.textContent = 'Captured';
+      statusEl.textContent = 'Sent';
+      statusEl.className = 'status ok';
+
+      setTimeout(() => {
+        input.value = '';
+        refreshButtonState();
+        btn.classList.remove('sent');
+        btn.textContent = 'Capture';
+        statusEl.textContent = '';
+        statusEl.className = 'status';
+        input.focus();
+      }, 600);
+
+    } catch (err) {
+      // Offline, or ntfy briefly unreachable — now that there's durable
+      // storage, save it there instead of leaving unsent text sitting
+      // only in the DOM (which a killed tab would lose outright).
+      try {
+        await queueCapture(text);
+        input.value = '';
+        refreshButtonState();
+        btn.textContent = 'Capture';
+        btn.disabled = false;
+        statusEl.textContent = 'Offline — saved, will send automatically';
+        statusEl.className = 'status queued';
+        renderPendingList();
+        scheduleBackgroundSync();
+      } catch (dbErr) {
+        // IndexedDB itself unavailable (e.g. private browsing mode) —
+        // fall back to the old behavior: keep the text so nothing is
+        // silently lost, let the person retry by hand.
+        btn.textContent = 'Capture';
+        btn.disabled = false;
+        statusEl.textContent = 'Failed to send — text kept, try again';
+        statusEl.className = 'status error';
+      }
+    }
+  }
+
+  btn.addEventListener('click', capture);
+
+  // Cmd/Ctrl+Enter to send — convenient while testing on desktop,
+  // harmless on mobile where it simply won't be triggered
+  input.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      capture();
+    }
+  });
+
+  // Write the current topic to IndexedDB on every load so the Service
+  // Worker's background-sync handler always has the latest value, even
+  // if this file is redeployed with a different topic later.
+  writeMeta('ntfyTopic', CONFIG.ntfy.topic).catch(() => {});
+  renderPendingList();
+  flushQueue();
+
+</script>
+
+</body>
+</html>
