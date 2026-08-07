@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url=./chronopomo-capture.html">
+<title>Chronopomo · Capture</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #14151a;
+    color: #8b8d97;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+  a { color: #e2a03f; }
+</style>
+</head>
+<body>
+  <!--
+    This page has exactly one job: forward anyone who lands on the bare
+    repo root to the real app at chronopomo-capture.html, so there is
+    only ever one canonical URL for the PWA's manifest, install
+    shortcut, and any link/bookmark to point at. The meta refresh above
+    fires instantly for the vast majority of browsers with no JS
+    needed; the script below is a fallback for the rare case that's
+    blocked, and the plain link covers everything else.
+  -->
+  <script>window.location.replace('./chronopomo-capture.html');</script>
+  <p>Redirecting… if nothing happens, <a href="./chronopomo-capture.html">tap here</a>.</p>
+</body>
+</html>
