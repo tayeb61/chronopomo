@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#14151a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -157,9 +157,8 @@
   }
 
   .field-wrap {
-    flex: 1;
     display: flex;
-    padding: 16px 20px;
+    padding: 16px 20px 4px;
   }
 
   textarea {
@@ -175,6 +174,11 @@
     font-weight: 500;
     letter-spacing: -0.01em;
     caret-color: var(--ember);
+    /* height is driven by JS (autoGrowTextarea) as content changes, so
+       no fixed flex:1/height here — the field grows with what's typed
+       instead of always claiming all the vertical space up front */
+    max-height: 45vh;
+    overflow-y: auto;
   }
 
   textarea::placeholder {
@@ -182,8 +186,84 @@
     font-weight: 400;
   }
 
+  /* --- syntax chips row --- */
+  .chips-row {
+    display: flex;
+    gap: 8px;
+    padding: 4px 20px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .chips-row::-webkit-scrollbar { display: none; }
+
+  .chip {
+    flex-shrink: 0;
+    border: 1px solid var(--field-border);
+    background: var(--bg-raised);
+    color: var(--ink-dim);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 13px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .chip:active {
+    background: var(--field-border);
+    color: var(--ink);
+  }
+
+  /* --- live parse preview --- */
+  .preview-area {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 20px 8px;
+  }
+
+  .preview-area.show { display: flex; }
+
+  .preview-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--field-border);
+  }
+
+  .preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-right: 2px;
+  }
+
+  .preview-tag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+
+  .preview-tag.category { background: #23324a; color: #7fb3f0; }
+  .preview-tag.priority { background: #4a2323; color: #e0827a; }
+  .preview-tag.due { background: #3a3320; color: var(--ember); }
+  .preview-tag.recur { background: #233a2e; color: var(--ok); }
+  .preview-tag.remind { background: #33234a; color: #b48ce8; }
+  .preview-tag.hashtag { background: #2b2d36; color: var(--ink-dim); }
+  .preview-tag.sub { background: #2b2d36; color: var(--ink-dim); }
+
   .action-bar {
     padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
+    /* transform is nudged upward by JS (positionActionBar) whenever the
+       on-screen keyboard eats into the visual viewport, so the button
+       stays pinned right above the keyboard instead of being covered
+       by it or left stranded off-screen below it */
+    transition: transform 120ms ease;
   }
 
   button.send {
@@ -238,6 +318,18 @@
     ></textarea>
   </div>
 
+  <div class="chips-row" id="chipsRow">
+    <button type="button" class="chip" data-insert="tag">#tag</button>
+    <button type="button" class="chip" data-insert="category">@category</button>
+    <button type="button" class="chip" data-insert="priority">!priority</button>
+    <button type="button" class="chip" data-insert="due">due …</button>
+    <button type="button" class="chip" data-insert="every">every …</button>
+    <button type="button" class="chip" data-insert="remind">remind …</button>
+    <button type="button" class="chip" data-insert="subtasks">&gt;&gt; subtasks</button>
+  </div>
+
+  <div class="preview-area" id="previewArea"></div>
+
   <div class="status" id="status"></div>
 
   <div class="pending-bar" id="pendingBar">
@@ -254,6 +346,7 @@
 <script>
   const input = document.getElementById('taskInput');
   const btn = document.getElementById('sendBtn');
+  const actionBar = document.querySelector('.action-bar');
 
   function refreshButtonState() {
     // empty-input guard — mirrors the MacroDroid constraint we built:
@@ -262,7 +355,38 @@
     btn.disabled = !hasContent;
   }
 
-  input.addEventListener('input', refreshButtonState);
+  // Grows the field to fit what's been typed (up to 45vh, then it
+  // scrolls internally) instead of always claiming a full-height box
+  // up front — resetting to 'auto' first is what lets it *shrink* back
+  // down correctly when text is deleted, not just grow.
+  function autoGrowTextarea() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, window.innerHeight * 0.45) + 'px';
+  }
+
+  // Keeps the Capture button pinned just above the on-screen keyboard.
+  // The 'interactive-widget=resizes-content' viewport meta tag already
+  // handles this natively on modern Chrome/Android by shrinking the
+  // layout viewport itself, making this a no-op there; this is the
+  // fallback for iOS Safari and older Android, which don't respect that
+  // meta tag but do support the visualViewport API this reads from.
+  function positionActionBar() {
+    if (!window.visualViewport) return;
+    const vv = window.visualViewport;
+    const keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    actionBar.style.transform = keyboardInset > 0 ? `translateY(-${keyboardInset}px)` : '';
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', positionActionBar);
+    window.visualViewport.addEventListener('scroll', positionActionBar);
+  }
+
+  input.addEventListener('input', () => {
+    refreshButtonState();
+    autoGrowTextarea();
+    renderPreview();
+  });
 
   // opens blank and focused every time — no repeat of the
   // "shows the last task" bug we hit in MacroDroid, since this
@@ -270,6 +394,9 @@
   window.addEventListener('load', () => {
     input.value = '';
     refreshButtonState();
+    autoGrowTextarea();
+    renderPreview();
+    positionActionBar();
     input.focus();
   });
 
@@ -281,6 +408,407 @@
       input.focus();
     }
   });
+
+  // -----------------------------------------------------------------
+  // Syntax chips — tap one to insert the marker at the cursor instead
+  // of remembering/typing the punctuation. A leading space on the
+  // inserted text is dropped when the cursor already sits at the start
+  // of the field or right after whitespace, so tapping never leaves a
+  // double space behind.
+  // -----------------------------------------------------------------
+  const CHIP_INSERTS = {
+    tag: ' #', category: ' @', priority: ' !',
+    due: ' due ', every: ' every ', remind: ' remind ', subtasks: ' >> ',
+  };
+
+  function insertAtCursor(text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    const finalText = (before.length === 0 || /\s$/.test(before)) ? text.replace(/^\s+/, '') : text;
+    input.value = before + finalText + after;
+    const newPos = (before + finalText).length;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+    refreshButtonState();
+    autoGrowTextarea();
+    renderPreview();
+  }
+
+  document.getElementById('chipsRow').addEventListener('click', (e) => {
+    const chipBtn = e.target.closest('.chip');
+    if (!chipBtn) return;
+    const spec = CHIP_INSERTS[chipBtn.dataset.insert];
+    if (spec) insertAtCursor(spec);
+  });
+
+  // -----------------------------------------------------------------
+  // Live parse preview — a JS port of the desktop app's
+  // _parse_quick_task_text (pomodoro_timer.py), kept in step with the
+  // same marker precedence: subtasks split first, then #tags/@category/
+  // !priority (matched anywhere), then a trailing remind phrase, then
+  // recurrence (day-set, then single-unit), then a trailing due phrase
+  // — each stage only seeing what earlier stages left behind. This is
+  // read-only/cosmetic: it never changes what actually gets sent, so a
+  // gap between this and the real parser only affects what the preview
+  // shows, never what task gets created. Date-phrase coverage mirrors
+  // _parse_due_phrase's common shapes (today/tomorrow/weekday names/
+  // "in N days"/explicit dates); a phrase it doesn't recognize is just
+  // shown as-is, same "leave it as title text" fallback the real parser
+  // uses.
+  // -----------------------------------------------------------------
+  const DAY_ABBRS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const DAY_FULL = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const DAY_ALT = DAY_ABBRS.concat(DAY_FULL).join('|');
+  const MONTHS_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const MONTHS_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const MONTH_ALT = MONTHS_ABBR.concat(MONTHS_FULL).join('|');
+  const PRIORITY_ALIASES = {
+    low: 'Low', l: 'Low',
+    med: 'Medium', medium: 'Medium', m: 'Medium', normal: 'Medium',
+    high: 'High', hi: 'High', h: 'High',
+    urgent: 'Urgent', u: 'Urgent', asap: 'Urgent', critical: 'Urgent', crit: 'Urgent',
+  };
+  const AT_CLAUSE = '(?:\\s+at\\s+(?:(noon|midnight)|(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?))?';
+  const STARTING_CLAUSE = '(?:\\s+start(?:ing)?\\s+(.+?))?';
+  const DAYSET_RE = new RegExp(
+    '\\s+every\\s+(?:(\\d+)\\s+weeks?\\s+(?:on\\s+)?)?' +
+    '((?:' + DAY_ALT + ')(?:\\s*(?:,|/|&|and)\\s*(?:' + DAY_ALT + '))+)' +
+    AT_CLAUSE + STARTING_CLAUSE + '\\s*$', 'i');
+  const RECUR_RE = new RegExp(
+    '\\s+(?:every\\s+(?:(\\d+)\\s+)?(days?|weekdays?|weeks?|months?|' + DAY_ALT + ')' +
+    '|(daily|weekdays|weekly|monthly))' + AT_CLAUSE + STARTING_CLAUSE + '\\s*$', 'i');
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function toISO(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function addDaysTo(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+
+  function addMonths(d, n) {
+    const total = d.getMonth() + n;
+    const year = d.getFullYear() + Math.floor(total / 12);
+    const month = ((total % 12) + 12) % 12;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(d.getDate(), lastDay));
+  }
+
+  function pyDow(d) { return (d.getDay() + 6) % 7; } // 0=Mon..6=Sun, matching Python's date.weekday()
+
+  function monthIndex(tok) {
+    let i = MONTHS_ABBR.indexOf(tok);
+    return i !== -1 ? i : MONTHS_FULL.indexOf(tok);
+  }
+
+  function parseClockTime(hourStr, minuteStr, ampm) {
+    let hour = parseInt(hourStr, 10);
+    let minute = minuteStr ? parseInt(minuteStr, 10) : 0;
+    ampm = (ampm || '').toLowerCase();
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    else if (ampm === 'am' && hour === 12) hour = 0;
+    return [Math.max(0, Math.min(23, hour)), Math.max(0, Math.min(59, minute))];
+  }
+
+  function timeFromGroups(special, hour, minute, ampm) {
+    if (special) return special.toLowerCase() === 'noon' ? '12:00' : '00:00';
+    if (hour) { const [h, m] = parseClockTime(hour, minute, ampm); return `${pad2(h)}:${pad2(m)}`; }
+    return null;
+  }
+
+  function extractDueTime(phrase) {
+    const m = phrase.match(/\s+at\s+(?:(noon|midnight)|(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)\s*$/i);
+    if (!m) return [phrase, null];
+    if (m[1]) return [phrase.slice(0, m.index).replace(/\s+$/, ''), m[1].toLowerCase() === 'noon' ? '12:00' : '00:00'];
+    const [h, mi] = parseClockTime(m[2], m[3], m[4]);
+    return [phrase.slice(0, m.index).replace(/\s+$/, ''), `${pad2(h)}:${pad2(mi)}`];
+  }
+
+  function parseDuePhrase(phraseRaw, today) {
+    let p = phraseRaw.trim().toLowerCase().replace(/\s+/g, ' ');
+    const dow = pyDow(today);
+    if (['today', 'tod', 'eod', 'end of day'].includes(p)) return toISO(today);
+    if (['tomorrow', 'tmrw', 'tmr'].includes(p)) return toISO(addDaysTo(today, 1));
+    if (p === 'day after tomorrow') return toISO(addDaysTo(today, 2));
+    if (['weekend', 'this weekend'].includes(p)) return toISO(addDaysTo(today, ((5 - dow) % 7 + 7) % 7));
+    if (p === 'next week') return toISO(addDaysTo(today, 7));
+    if (p === 'next month') return toISO(addMonths(today, 1));
+    if (['eow', 'end of week'].includes(p)) return toISO(addDaysTo(today, ((6 - dow) % 7 + 7) % 7));
+    if (['eom', 'end of month'].includes(p)) return toISO(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+
+    let m = p.match(/^in\s+(?:(a|an)|(\d+))\s*(days?|weeks?|months?)?$/);
+    if (m) {
+      const n = m[1] ? 1 : parseInt(m[2], 10);
+      const unit = m[3] || '';
+      if (unit.startsWith('month')) return toISO(addMonths(today, n));
+      return toISO(addDaysTo(today, n * (unit.startsWith('week') ? 7 : 1)));
+    }
+
+    m = p.match(new RegExp('^next\\s+(' + DAY_ALT + ')$'));
+    if (m) {
+      for (let i = 0; i < 7; i++) {
+        if (m[1] === DAY_ABBRS[i] || m[1] === DAY_FULL[i]) {
+          const base = ((i - dow) % 7 + 7) % 7;
+          return toISO(addDaysTo(today, base === 0 ? 7 : base + 7));
+        }
+      }
+    }
+
+    m = p.match(new RegExp('^this\\s+(' + DAY_ALT + ')$'));
+    if (m) p = m[1];
+    for (let i = 0; i < 7; i++) {
+      if (p === DAY_ABBRS[i] || p === DAY_FULL[i]) return toISO(addDaysTo(today, ((i - dow) % 7 + 7) % 7));
+    }
+
+    const pClean = p.replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/,/g, '');
+    const inFuture = (d) => {
+      if (d < today) d.setFullYear(d.getFullYear() + 1);
+      return d;
+    };
+
+    m = pClean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) { const d = new Date(+m[1], +m[2] - 1, +m[3]); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) { const d = new Date(+m[3], +m[1] - 1, +m[2]); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (m) { const d = inFuture(new Date(today.getFullYear(), +m[1] - 1, +m[2])); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(/^(\d{1,2})-(\d{1,2})$/);
+    if (m) { const d = inFuture(new Date(today.getFullYear(), +m[1] - 1, +m[2])); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(new RegExp('^(' + MONTH_ALT + ')\\s+(\\d{1,2})\\s+(\\d{4})$'));
+    if (m) { const d = new Date(+m[3], monthIndex(m[1]), +m[2]); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(new RegExp('^(' + MONTH_ALT + ')\\s+(\\d{1,2})$'));
+    if (m) { const d = inFuture(new Date(today.getFullYear(), monthIndex(m[1]), +m[2])); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(new RegExp('^(\\d{1,2})\\s+(' + MONTH_ALT + ')\\s+(\\d{4})$'));
+    if (m) { const d = new Date(+m[3], monthIndex(m[2]), +m[1]); if (!isNaN(d)) return toISO(d); }
+
+    m = pClean.match(new RegExp('^(\\d{1,2})\\s+(' + MONTH_ALT + ')$'));
+    if (m) { const d = inFuture(new Date(today.getFullYear(), monthIndex(m[2]), +m[1])); if (!isNaN(d)) return toISO(d); }
+
+    return null;
+  }
+
+  function resolveQuickDayset(daysStr, today) {
+    const tokens = daysStr.split(/\s*(?:,|\/|&|and)\s*/i).map((t) => t.trim().toLowerCase());
+    const idxs = new Set();
+    for (const tok of tokens) {
+      const i = DAY_ABBRS.indexOf(tok) !== -1 ? DAY_ABBRS.indexOf(tok) : DAY_FULL.indexOf(tok);
+      if (i !== -1) idxs.add(i);
+    }
+    if (idxs.size < 2) return null;
+    const days = Array.from(idxs).sort((a, b) => a - b);
+    const dow = pyDow(today);
+    const offset = Math.min(...days.map((d) => ((d - dow) % 7 + 7) % 7));
+    return [days, toISO(addDaysTo(today, offset))];
+  }
+
+  function resolveQuickRecurrence(num, word, today) {
+    const w = word.toLowerCase();
+    const interval = num ? Math.max(1, parseInt(num, 10)) : 1;
+    if (['day', 'days', 'daily'].includes(w)) return ['Daily', interval, toISO(today)];
+    if (['weekday', 'weekdays'].includes(w)) {
+      let d = new Date(today);
+      while (pyDow(d) >= 5) d = addDaysTo(d, 1);
+      return ['Weekdays', 1, toISO(d)];
+    }
+    if (['week', 'weeks', 'weekly'].includes(w)) return ['Weekly', interval, toISO(today)];
+    if (['month', 'months', 'monthly'].includes(w)) return ['Monthly', interval, toISO(today)];
+    for (let i = 0; i < 7; i++) {
+      if (w === DAY_ABBRS[i] || w === DAY_FULL[i]) {
+        const dow = pyDow(today);
+        return ['Weekly', interval, toISO(addDaysTo(today, ((i - dow) % 7 + 7) % 7))];
+      }
+    }
+    return null;
+  }
+
+  function resolveQuickRecurStart(startPhrase, today) {
+    if (!startPhrase) return [true, null];
+    const resolved = parseDuePhrase(startPhrase, today);
+    return [resolved !== null, resolved];
+  }
+
+  function parseQuickTaskPreview(rawText) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let subtasks = [];
+    let titlePart = rawText;
+    const subMatch = rawText.match(/\s*>>\s*([\s\S]+)$/);
+    if (subMatch) {
+      titlePart = rawText.slice(0, subMatch.index);
+      subtasks = subMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    const tagSet = [];
+    let stripped = titlePart.replace(/(?<!\w)#([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
+      tagSet.push(g1.toLowerCase());
+      return '';
+    });
+    const tags = [...new Set(tagSet)];
+
+    const catMatches = [];
+    stripped = stripped.replace(/(?<!\w)@([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
+      catMatches.push(g1);
+      return '';
+    });
+    const category = catMatches.length ? catMatches[0] : null;
+
+    let priority = null;
+    stripped = stripped.replace(/(?<!\w)!(\w+)/g, (m, g1) => {
+      const pr = PRIORITY_ALIASES[g1.toLowerCase()];
+      if (pr && !priority) { priority = pr; return ''; }
+      return m;
+    });
+
+    stripped = stripped.replace(/\s{2,}/g, ' ').trim();
+
+    let reminderDate = null, reminderTime = null;
+    const remindMatch = stripped.match(/\s+remind(?:\s+me)?\s+(.+?)\s*$/i);
+    if (remindMatch) {
+      const [remindPhrase, remindTime] = extractDueTime(remindMatch[1]);
+      const resolved = parseDuePhrase(remindPhrase, today);
+      if (resolved) {
+        reminderDate = resolved;
+        reminderTime = remindTime;
+        stripped = stripped.slice(0, remindMatch.index).trim();
+      }
+    }
+
+    let dueDate = null, dueTime = null, recurring = null, recurringInterval = 1, recurringDays = [];
+    let title = stripped;
+
+    const daysetMatch = stripped.match(DAYSET_RE);
+    if (daysetMatch) {
+      const resolvedDays = resolveQuickDayset(daysetMatch[2], today);
+      if (resolvedDays) {
+        const [ok, startsOn] = resolveQuickRecurStart(daysetMatch[7], today);
+        if (ok) {
+          recurringDays = resolvedDays[0];
+          dueDate = startsOn || resolvedDays[1];
+          recurring = 'Custom Days';
+          recurringInterval = daysetMatch[1] ? Math.max(1, parseInt(daysetMatch[1], 10)) : 1;
+          dueTime = timeFromGroups(daysetMatch[3], daysetMatch[4], daysetMatch[5], daysetMatch[6]);
+          title = stripped.slice(0, daysetMatch.index).trim();
+        }
+      }
+    }
+
+    if (!recurring) {
+      const recurMatch = stripped.match(RECUR_RE);
+      if (recurMatch) {
+        const resolved = resolveQuickRecurrence(recurMatch[1], recurMatch[2] || recurMatch[3], today);
+        if (resolved) {
+          const [ok, startsOn] = resolveQuickRecurStart(recurMatch[8], today);
+          if (ok) {
+            recurring = resolved[0]; recurringInterval = resolved[1]; dueDate = startsOn || resolved[2];
+            dueTime = timeFromGroups(recurMatch[4], recurMatch[5], recurMatch[6], recurMatch[7]);
+            title = stripped.slice(0, recurMatch.index).trim();
+          }
+        }
+      }
+    }
+
+    if (!recurring) {
+      const dueMatch = stripped.match(/\s+(?:due|by)\s+(.+?)\s*$/i);
+      if (dueMatch) {
+        const [datePhrase, dt] = extractDueTime(dueMatch[1]);
+        const resolved = parseDuePhrase(datePhrase, today);
+        if (resolved) {
+          dueDate = resolved;
+          dueTime = dt;
+          title = stripped.slice(0, dueMatch.index).trim();
+        }
+      }
+    }
+
+    return { title, tags, category, priority, dueDate, dueTime, recurring, recurringInterval, recurringDays, reminderDate, reminderTime, subtasks };
+  }
+
+  function describeRecurrence(recurring, interval, days) {
+    if (recurring === 'Daily') return interval > 1 ? `every ${interval} days` : 'daily';
+    if (recurring === 'Weekdays') return 'weekdays';
+    if (recurring === 'Weekly') return interval > 1 ? `every ${interval} weeks` : 'weekly';
+    if (recurring === 'Monthly') return interval > 1 ? `every ${interval} months` : 'monthly';
+    if (recurring === 'Custom Days') {
+      const labels = days.map((i) => DAY_LABELS[i]).join(', ');
+      return interval > 1 ? `every ${interval} weeks on ${labels}` : `every ${labels}`;
+    }
+    return recurring;
+  }
+
+  function formatDateLabel(iso) {
+    const [y, mo, d] = iso.split('-').map(Number);
+    const date = new Date(y, mo - 1, d);
+    const opts = { month: 'short', day: 'numeric' };
+    if (y !== new Date().getFullYear()) opts.year = 'numeric';
+    return date.toLocaleDateString(undefined, opts);
+  }
+
+  function formatTimeLabel(hhmm) {
+    const [h, mi] = hhmm.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, mi, 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function makeTag(text, cls) {
+    const span = document.createElement('span');
+    span.className = 'preview-tag ' + cls;
+    span.textContent = text;
+    return span;
+  }
+
+  const previewArea = document.getElementById('previewArea');
+
+  function renderPreview() {
+    const lines = input.value.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      previewArea.classList.remove('show');
+      previewArea.innerHTML = '';
+      return;
+    }
+    previewArea.classList.add('show');
+    previewArea.innerHTML = '';
+    for (const line of lines) {
+      const parsed = parseQuickTaskPreview(line);
+      const row = document.createElement('div');
+      row.className = 'preview-line';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'preview-title';
+      titleSpan.textContent = parsed.title || '(untitled)';
+      row.appendChild(titleSpan);
+
+      if (parsed.priority) row.appendChild(makeTag(parsed.priority, 'priority'));
+      if (parsed.category) row.appendChild(makeTag('@' + parsed.category, 'category'));
+      for (const t of parsed.tags) row.appendChild(makeTag('#' + t, 'hashtag'));
+      if (parsed.recurring) {
+        row.appendChild(makeTag('repeats ' + describeRecurrence(parsed.recurring, parsed.recurringInterval, parsed.recurringDays), 'recur'));
+      } else if (parsed.dueDate) {
+        let label = 'due ' + formatDateLabel(parsed.dueDate);
+        if (parsed.dueTime) label += ' ' + formatTimeLabel(parsed.dueTime);
+        row.appendChild(makeTag(label, 'due'));
+      }
+      if (parsed.reminderDate) {
+        let label = 'remind ' + formatDateLabel(parsed.reminderDate);
+        if (parsed.reminderTime) label += ' ' + formatTimeLabel(parsed.reminderTime);
+        row.appendChild(makeTag(label, 'remind'));
+      }
+      if (parsed.subtasks.length) {
+        row.appendChild(makeTag(parsed.subtasks.length + (parsed.subtasks.length > 1 ? ' subtasks' : ' subtask'), 'sub'));
+      }
+      previewArea.appendChild(row);
+    }
+  }
 
   const CONFIG = {
     ntfy: {
@@ -499,6 +1027,8 @@
       setTimeout(() => {
         input.value = '';
         refreshButtonState();
+        autoGrowTextarea();
+        renderPreview();
         btn.classList.remove('sent');
         btn.textContent = 'Capture';
         statusEl.textContent = '';
@@ -514,6 +1044,8 @@
         await queueCapture(text);
         input.value = '';
         refreshButtonState();
+        autoGrowTextarea();
+        renderPreview();
         btn.textContent = 'Capture';
         btn.disabled = false;
         statusEl.textContent = 'Offline — saved, will send automatically';
