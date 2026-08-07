@@ -2,7 +2,7 @@
   "name": "Chronopomo Capture",
   "short_name": "Capture",
   "description": "Quick task capture for Chronopomo",
-  "start_url": "./",
+  "start_url": "./chronopomo-capture.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#14151a",
