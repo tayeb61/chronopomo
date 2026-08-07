@@ -10,17 +10,24 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <title>Chronopomo · Capture</title>
 <style>
   :root {
-    --bg: #14151a;
-    --bg-raised: #1b1c23;
-    --ink: #f2efea;
-    --ink-dim: #8b8d97;
-    --ember: #e2a03f;
-    --ember-dim: #4a3a1e;
-    --ok: #6fcf97;
-    --field-border: #2b2d36;
+    --bg: #121316;
+    --bg-raised: #1b1d23;
+    --card: #1a1c22;
+    --ink: #f5f2ec;
+    --ink-dim: #85878f;
+    --ink-faint: #4b4d56;
+    --tomato: #9146ff;
+    --tomato-dim: #241a3f;
+    --leaf: #6fcf97;
+    --leaf-dim: #1c3327;
+    --field-border: #262932;
+    --danger: #ef6b55;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -42,16 +49,71 @@
     min-height: 100dvh;
   }
 
-  .label {
-    padding: 22px 24px 0;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-dim);
+  /* --- header: wordmark + the tomato mark doubling as send-status --- */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 20px 24px 0;
   }
 
-  .label b { color: var(--ink); font-weight: 700; }
+  .tomato-mark {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    overflow: visible;
+  }
+
+  .tomato-mark .fruit {
+    fill: none;
+    stroke: var(--ink-faint);
+    stroke-width: 1.6;
+    transition: fill 200ms ease, stroke 200ms ease;
+  }
+
+  .tomato-mark .leaf {
+    fill: var(--ink-faint);
+    transition: fill 200ms ease;
+  }
+
+  /* idle -> outline only (above). states below fill the fruit in. */
+  .tomato-mark.sending .fruit {
+    stroke: var(--tomato);
+    fill: var(--tomato);
+    animation: tomato-pulse 900ms ease-in-out infinite;
+  }
+  .tomato-mark.sending .leaf { fill: var(--leaf); }
+
+  .tomato-mark.ok .fruit { stroke: var(--leaf); fill: var(--leaf); }
+  .tomato-mark.ok .leaf { fill: var(--leaf); }
+
+  .tomato-mark.queued .fruit { stroke: var(--tomato); fill: none; }
+  .tomato-mark.queued .leaf { fill: var(--tomato); }
+
+  .tomato-mark.error .fruit { stroke: var(--danger); fill: var(--danger); }
+  .tomato-mark.error .leaf { fill: var(--danger); }
+
+  @keyframes tomato-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tomato-mark.sending .fruit { animation: none; }
+  }
+
+  .wordmark {
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .wordmark span {
+    font-weight: 500;
+    color: var(--ink-dim);
+  }
 
   .status {
     padding: 0 24px;
@@ -61,9 +123,9 @@
     color: var(--ink-dim);
   }
 
-  .status.error { color: #e07a5f; }
-  .status.ok { color: var(--ok); }
-  .status.queued { color: var(--ember); }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--leaf); }
+  .status.queued { color: var(--tomato); }
 
   .pending-bar {
     padding: 0 24px;
@@ -83,8 +145,8 @@
     height: 20px;
     padding: 0 6px;
     border-radius: 10px;
-    background: var(--ember-dim);
-    color: var(--ember);
+    background: var(--tomato-dim);
+    color: var(--tomato);
     font-size: 12px;
     font-weight: 700;
   }
@@ -120,7 +182,7 @@
     align-items: center;
     gap: 10px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: 14px;
     background: var(--bg-raised);
     border: 1px solid var(--field-border);
   }
@@ -156,9 +218,24 @@
     background: var(--field-border);
   }
 
+  /* --- the compose card: input lifted off the background, not blended
+     into it, with a focus ring that lights up in the accent --- */
   .field-wrap {
-    display: flex;
     padding: 16px 20px 4px;
+  }
+
+  .compose-card {
+    display: flex;
+    background: var(--card);
+    border: 1px solid var(--field-border);
+    border-radius: 22px;
+    padding: 16px 18px;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .compose-card:focus-within {
+    border-color: var(--tomato);
+    box-shadow: 0 0 0 3px var(--tomato-dim);
   }
 
   textarea {
@@ -169,20 +246,20 @@
     background: transparent;
     color: var(--ink);
     font-family: inherit;
-    font-size: 24px;
+    font-size: 22px;
     line-height: 1.4;
     font-weight: 500;
     letter-spacing: -0.01em;
-    caret-color: var(--ember);
+    caret-color: var(--tomato);
     /* height is driven by JS (autoGrowTextarea) as content changes, so
        no fixed flex:1/height here — the field grows with what's typed
        instead of always claiming all the vertical space up front */
-    max-height: 45vh;
+    max-height: 42vh;
     overflow-y: auto;
   }
 
   textarea::placeholder {
-    color: #45474f;
+    color: var(--ink-faint);
     font-weight: 400;
   }
 
@@ -190,7 +267,7 @@
   .chips-row {
     display: flex;
     gap: 8px;
-    padding: 4px 20px 10px;
+    padding: 10px 20px 10px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -199,6 +276,9 @@
 
   .chip {
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     border: 1px solid var(--field-border);
     background: var(--bg-raised);
     color: var(--ink-dim);
@@ -207,11 +287,18 @@
     padding: 7px 13px;
     border-radius: 999px;
     white-space: nowrap;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+
+  .chip .glyph {
+    font-weight: 700;
+    color: var(--tomato);
   }
 
   .chip:active {
     background: var(--field-border);
     color: var(--ink);
+    border-color: var(--field-border);
   }
 
   /* --- live parse preview --- */
@@ -229,10 +316,27 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
-    border-radius: 12px;
+    padding: 8px 12px 8px 8px;
+    border-radius: 14px;
     background: var(--bg-raised);
     border: 1px solid var(--field-border);
+  }
+
+  /* Numbered because these lines genuinely are an ordered list — the
+     order they're typed in is the order the tasks get created in — not
+     decoration for its own sake. */
+  .preview-index {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--field-border);
+    color: var(--ink-dim);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .preview-title {
@@ -249,13 +353,13 @@
     border-radius: 999px;
   }
 
-  .preview-tag.category { background: #23324a; color: #7fb3f0; }
-  .preview-tag.priority { background: #4a2323; color: #e0827a; }
-  .preview-tag.due { background: #3a3320; color: var(--ember); }
-  .preview-tag.recur { background: #233a2e; color: var(--ok); }
-  .preview-tag.remind { background: #33234a; color: #b48ce8; }
-  .preview-tag.hashtag { background: #2b2d36; color: var(--ink-dim); }
-  .preview-tag.sub { background: #2b2d36; color: var(--ink-dim); }
+  .preview-tag.category { background: #1f2a3d; color: #7fb3f0; }
+  .preview-tag.priority { background: #3d1f26; color: #ef8b9a; }
+  .preview-tag.due { background: var(--tomato-dim); color: var(--tomato); }
+  .preview-tag.recur { background: var(--leaf-dim); color: var(--leaf); }
+  .preview-tag.remind { background: #3d2f1a; color: #e0a84f; }
+  .preview-tag.hashtag { background: var(--field-border); color: var(--ink-dim); }
+  .preview-tag.sub { background: var(--field-border); color: var(--ink-dim); }
 
   .action-bar {
     padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
@@ -271,16 +375,18 @@
     border: none;
     border-radius: 18px;
     padding: 18px 0;
-    font-size: 17px;
-    font-weight: 700;
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
     letter-spacing: 0.01em;
-    color: #1a1206;
-    background: var(--ember-dim);
-    transition: background 160ms ease, transform 120ms ease;
+    color: #f5f0ff;
+    background: var(--tomato-dim);
+    transition: background 160ms ease, transform 120ms ease, box-shadow 160ms ease;
   }
 
   button.send:not(:disabled) {
-    background: var(--ember);
+    background: var(--tomato);
+    box-shadow: 0 8px 24px -8px rgba(145, 70, 255, 0.55);
   }
 
   button.send:not(:disabled):active {
@@ -288,14 +394,16 @@
   }
 
   button.send:disabled {
-    color: #55524a;
+    color: var(--ink-faint);
     background: var(--bg-raised);
     border: 1px solid var(--field-border);
+    box-shadow: none;
   }
 
   button.send.sent {
-    background: var(--ok);
+    background: var(--leaf);
     color: #0e2016;
+    box-shadow: 0 8px 24px -8px rgba(111, 207, 151, 0.5);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -305,27 +413,35 @@
 </head>
 <body>
 
-  <div class="label">Chronopomo <b>· Capture</b></div>
+  <div class="header">
+    <svg class="tomato-mark" id="tomatoMark" viewBox="0 0 24 24">
+      <path class="leaf" d="M12 3c1.2 0 2.1.9 2.4 2-1 .3-1.8.9-2.4 1.7-.6-.8-1.4-1.4-2.4-1.7.3-1.1 1.2-2 2.4-2z"/>
+      <circle class="fruit" cx="12" cy="14" r="8"/>
+    </svg>
+    <div class="wordmark">Chronopomo <span>· Capture</span></div>
+  </div>
 
   <div class="field-wrap">
-    <textarea
-      id="taskInput"
-      placeholder="What's on your mind?"
-      autocapitalize="sentences"
-      autocorrect="on"
-      spellcheck="true"
-      rows="1"
-    ></textarea>
+    <div class="compose-card">
+      <textarea
+        id="taskInput"
+        placeholder="What's on your mind?"
+        autocapitalize="sentences"
+        autocorrect="on"
+        spellcheck="true"
+        rows="1"
+      ></textarea>
+    </div>
   </div>
 
   <div class="chips-row" id="chipsRow">
-    <button type="button" class="chip" data-insert="tag">#tag</button>
-    <button type="button" class="chip" data-insert="category">@category</button>
-    <button type="button" class="chip" data-insert="priority">!priority</button>
+    <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
+    <button type="button" class="chip" data-insert="category"><span class="glyph">@</span>category</button>
+    <button type="button" class="chip" data-insert="priority"><span class="glyph">!</span>priority</button>
     <button type="button" class="chip" data-insert="due">due …</button>
     <button type="button" class="chip" data-insert="every">every …</button>
     <button type="button" class="chip" data-insert="remind">remind …</button>
-    <button type="button" class="chip" data-insert="subtasks">&gt;&gt; subtasks</button>
+    <button type="button" class="chip" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
   </div>
 
   <div class="preview-area" id="previewArea"></div>
@@ -347,6 +463,15 @@
   const input = document.getElementById('taskInput');
   const btn = document.getElementById('sendBtn');
   const actionBar = document.querySelector('.action-bar');
+  const tomatoMark = document.getElementById('tomatoMark');
+
+  // The header mark doubles as a send-status indicator rather than
+  // sitting there as pure decoration: outline (idle) -> filled +
+  // pulsing (sending) -> leaf-green (sent) -> tomato ring (queued
+  // offline) -> red (failed, non-queue error).
+  function setTomatoState(state) {
+    tomatoMark.setAttribute('class', 'tomato-mark' + (state !== 'idle' ? ' ' + state : ''));
+  }
 
   function refreshButtonState() {
     // empty-input guard — mirrors the MacroDroid constraint we built:
@@ -778,10 +903,19 @@
     }
     previewArea.classList.add('show');
     previewArea.innerHTML = '';
-    for (const line of lines) {
+    lines.forEach((line, idx) => {
       const parsed = parseQuickTaskPreview(line);
       const row = document.createElement('div');
       row.className = 'preview-line';
+
+      // The index badge only earns its place once there's an actual
+      // sequence to number — one line, one task, no ordering to convey.
+      if (lines.length > 1) {
+        const indexEl = document.createElement('span');
+        indexEl.className = 'preview-index';
+        indexEl.textContent = String(idx + 1);
+        row.appendChild(indexEl);
+      }
 
       const titleSpan = document.createElement('span');
       titleSpan.className = 'preview-title';
@@ -807,7 +941,7 @@
         row.appendChild(makeTag(parsed.subtasks.length + (parsed.subtasks.length > 1 ? ' subtasks' : ' subtask'), 'sub'));
       }
       previewArea.appendChild(row);
-    }
+    });
   }
 
   const CONFIG = {
@@ -916,8 +1050,10 @@
       pendingListEl.classList.remove('open');
       pendingListEl.innerHTML = '';
       pendingListOpen = false;
+      setTomatoState('idle');
       return;
     }
+    setTomatoState('queued');
     pendingBar.classList.add('show');
     pendingBadge.textContent = String(items.length);
     pendingListEl.innerHTML = '';
@@ -1014,6 +1150,7 @@
     btn.textContent = 'Sending…';
     statusEl.textContent = '';
     statusEl.className = 'status';
+    setTomatoState('sending');
 
     try {
       if (!navigator.onLine) throw new Error('offline');
@@ -1023,6 +1160,7 @@
       btn.textContent = 'Captured';
       statusEl.textContent = 'Sent';
       statusEl.className = 'status ok';
+      setTomatoState('ok');
 
       setTimeout(() => {
         input.value = '';
@@ -1033,6 +1171,7 @@
         btn.textContent = 'Capture';
         statusEl.textContent = '';
         statusEl.className = 'status';
+        setTomatoState('idle');
         input.focus();
       }, 600);
 
@@ -1050,6 +1189,7 @@
         btn.disabled = false;
         statusEl.textContent = 'Offline — saved, will send automatically';
         statusEl.className = 'status queued';
+        setTomatoState('queued');
         renderPendingList();
         scheduleBackgroundSync();
       } catch (dbErr) {
@@ -1060,6 +1200,7 @@
         btn.disabled = false;
         statusEl.textContent = 'Failed to send — text kept, try again';
         statusEl.className = 'status error';
+        setTomatoState('error');
       }
     }
   }
