@@ -12,7 +12,15 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- Font CSS loaded non-render-blocking: preload it, then swap its
+     media to 'all' once fetched, so first paint doesn't wait on a
+     round trip to fonts.googleapis.com. The system-font fallback
+     (-apple-system etc.) covers the brief gap before the swap, and
+     font-display=swap in the URL keeps individual glyphs from going
+     invisible while the actual font file downloads after that. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"></noscript>
 <title>Chronopomo · Capture</title>
 <style>
   :root {
@@ -35,18 +43,34 @@
   html, body {
     height: 100%;
     margin: 0;
-    background: var(--bg);
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     overscroll-behavior: none;
   }
 
+  /* Outer viewport: on an actual phone this is the whole screen and
+     .app-shell fills it edge to edge (max-width is moot at that
+     width). On anything wider — a desktop browser tab, a tablet — it
+     centers a fixed phone-width column instead of letting the layout
+     stretch full-bleed, since every measurement inside (font sizes,
+     tap targets, the chip row, etc.) was tuned for a phone screen. */
   body {
     display: flex;
+    flex-direction: row;
+    justify-content: center;
+    background: #0a0a0c;
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    display: flex;
     flex-direction: column;
+    width: 100%;
+    max-width: 480px;
+    min-height: 100dvh;
+    background: var(--bg);
     padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
              env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
-    min-height: 100dvh;
   }
 
   /* --- header: wordmark + the tomato mark doubling as send-status --- */
@@ -114,6 +138,100 @@
     font-weight: 500;
     color: var(--ink-dim);
   }
+
+  /* --- tab switcher: Capture / View --- */
+  .tab-bar {
+    display: flex;
+    gap: 6px;
+    padding: 14px 24px 0;
+  }
+
+  .tab-btn {
+    flex: 1;
+    border: 1px solid var(--field-border);
+    background: var(--bg-raised);
+    color: var(--ink-dim);
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 0;
+    border-radius: 12px;
+    transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+
+  .tab-btn.active {
+    background: var(--tomato-dim);
+    color: var(--tomato);
+    border-color: var(--tomato-dim);
+  }
+
+  .tab-panel { display: none; flex-direction: column; flex: 1; min-height: 0; }
+  .tab-panel.active { display: flex; }
+
+  /* --- View tab: read-only task snapshot --- */
+  .view-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px 4px;
+  }
+
+  .view-updated {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  .view-refresh {
+    border: 1px solid var(--field-border);
+    background: var(--bg-raised);
+    color: var(--ink-dim);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 14px;
+    border-radius: 999px;
+  }
+
+  .view-refresh:active { background: var(--field-border); color: var(--ink); }
+  .view-refresh.loading { color: var(--tomato); }
+
+  .snapshot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 20px 20px;
+    overflow-y: auto;
+  }
+
+  .snapshot-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--card);
+    border: 1px solid var(--field-border);
+  }
+
+  .snapshot-item.overdue { border-color: var(--danger); }
+
+  .snapshot-title {
+    flex: 1 1 100%;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .snapshot-empty, .snapshot-error {
+    margin: 40px 24px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  .snapshot-error { color: var(--danger); }
 
   .status {
     padding: 0 24px;
@@ -412,6 +530,7 @@
 </style>
 </head>
 <body>
+  <div class="app-shell">
 
   <div class="header">
     <svg class="tomato-mark" id="tomatoMark" viewBox="0 0 24 24">
@@ -421,42 +540,61 @@
     <div class="wordmark">Chronopomo <span>· Capture</span></div>
   </div>
 
-  <div class="field-wrap">
-    <div class="compose-card">
-      <textarea
-        id="taskInput"
-        placeholder="What's on your mind?"
-        autocapitalize="sentences"
-        autocorrect="on"
-        spellcheck="true"
-        rows="1"
-      ></textarea>
+  <div class="tab-bar" id="tabBar">
+    <button type="button" class="tab-btn active" data-tab="capture">Capture</button>
+    <button type="button" class="tab-btn" data-tab="view">View</button>
+  </div>
+
+  <div class="tab-panel active" id="captureTab">
+
+    <div class="field-wrap">
+      <div class="compose-card">
+        <textarea
+          id="taskInput"
+          placeholder="What's on your mind?"
+          autocapitalize="sentences"
+          autocorrect="on"
+          spellcheck="true"
+          rows="1"
+        ></textarea>
+      </div>
     </div>
+
+    <div class="chips-row" id="chipsRow">
+      <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
+      <button type="button" class="chip" data-insert="category"><span class="glyph">@</span>category</button>
+      <button type="button" class="chip" data-insert="priority"><span class="glyph">!</span>priority</button>
+      <button type="button" class="chip" data-insert="due">due …</button>
+      <button type="button" class="chip" data-insert="every">every …</button>
+      <button type="button" class="chip" data-insert="remind">remind …</button>
+      <button type="button" class="chip" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
+    </div>
+
+    <div class="preview-area" id="previewArea"></div>
+
+    <div class="status" id="status"></div>
+
+    <div class="pending-bar" id="pendingBar">
+      <span class="pending-badge" id="pendingBadge">0</span>
+      <span class="pending-label">Waiting to send</span>
+      <span class="pending-chevron" id="pendingChevron">▾</span>
+    </div>
+    <div class="pending-list" id="pendingList"></div>
+
+    <div class="action-bar">
+      <button class="send" id="sendBtn" disabled>Capture</button>
+    </div>
+
   </div>
 
-  <div class="chips-row" id="chipsRow">
-    <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
-    <button type="button" class="chip" data-insert="category"><span class="glyph">@</span>category</button>
-    <button type="button" class="chip" data-insert="priority"><span class="glyph">!</span>priority</button>
-    <button type="button" class="chip" data-insert="due">due …</button>
-    <button type="button" class="chip" data-insert="every">every …</button>
-    <button type="button" class="chip" data-insert="remind">remind …</button>
-    <button type="button" class="chip" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
+  <div class="tab-panel" id="viewTab">
+    <div class="view-toolbar">
+      <span class="view-updated" id="viewUpdated"></span>
+      <button type="button" class="view-refresh" id="viewRefreshBtn">Refresh</button>
+    </div>
+    <div class="snapshot-list" id="snapshotList"></div>
   </div>
 
-  <div class="preview-area" id="previewArea"></div>
-
-  <div class="status" id="status"></div>
-
-  <div class="pending-bar" id="pendingBar">
-    <span class="pending-badge" id="pendingBadge">0</span>
-    <span class="pending-label">Waiting to send</span>
-    <span class="pending-chevron" id="pendingChevron">▾</span>
-  </div>
-  <div class="pending-list" id="pendingList"></div>
-
-  <div class="action-bar">
-    <button class="send" id="sendBtn" disabled>Capture</button>
   </div>
 
 <script>
@@ -529,7 +667,7 @@
   // another app), so a stale draft never lingers if the page was
   // merely backgrounded rather than fully reloaded
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
+    if (document.visibilityState === 'visible' && captureTabEl.classList.contains('active')) {
       input.focus();
     }
   });
@@ -957,6 +1095,126 @@
     const res = await fetch(url, { method: 'POST', body: text });
     if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
   }
+
+  // -----------------------------------------------------------------
+  // View tab — read-only snapshot of the PC's current task list.
+  // Fetch-on-open only, no live/streaming connection: reopening the
+  // tab or tapping Refresh re-fetches. Uses ntfy's poll mode (poll=1,
+  // since=latest) to grab the most recent published message rather
+  // than opening a held-open event stream, matching the fetch-once
+  // philosophy the spec calls for on this screen.
+  // -----------------------------------------------------------------
+  const SNAPSHOT_CONFIG = {
+    // Independently-generated topic, separate from CONFIG.ntfy.topic
+    // above — this one grants *read* access to the whole task list,
+    // which is more sensitive than the write-only capture topic, so a
+    // leak of one must not expose the other. Replace with your own
+    // random topic (generated the same way as the capture one) before
+    // this screen will show anything.
+    topic: 'chronopomo-snapshot-REPLACE-WITH-YOUR-RANDOM-TOPIC'
+  };
+
+  const snapshotListEl = document.getElementById('snapshotList');
+  const viewUpdatedEl = document.getElementById('viewUpdated');
+  const viewRefreshBtn = document.getElementById('viewRefreshBtn');
+  let snapshotLoaded = false;
+
+  async function loadSnapshot() {
+    const url = `https://ntfy.sh/${SNAPSHOT_CONFIG.topic}/json?poll=1&since=latest`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
+    const line = (await res.text()).trim();
+    if (!line) return { tasks: [], generated: null }; // nothing published yet
+    const msg = JSON.parse(line);
+    return JSON.parse(msg.message); // { tasks: [...], generated: <unix ts> }
+  }
+
+  function renderSnapshotList(tasks) {
+    snapshotListEl.innerHTML = '';
+    if (tasks.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'snapshot-empty';
+      empty.textContent = 'Nothing overdue, due today, or high-priority right now.';
+      snapshotListEl.appendChild(empty);
+      return;
+    }
+    const today = toISO(new Date());
+    for (const t of tasks) {
+      const row = document.createElement('div');
+      const overdue = !!t.due && t.due < today;
+      row.className = 'snapshot-item' + (overdue ? ' overdue' : '');
+
+      const titleEl = document.createElement('span');
+      titleEl.className = 'snapshot-title';
+      titleEl.textContent = t.title || '(untitled)';
+      row.appendChild(titleEl);
+
+      if (t.priority) row.appendChild(makeTag(t.priority, 'priority'));
+      if (t.category) row.appendChild(makeTag('@' + t.category, 'category'));
+      if (t.due) {
+        row.appendChild(makeTag((overdue ? 'overdue ' : 'due ') + formatDateLabel(t.due), 'due'));
+      }
+      snapshotListEl.appendChild(row);
+    }
+  }
+
+  function renderSnapshotUpdated(generated) {
+    viewUpdatedEl.textContent = generated
+      ? 'Updated ' + relativeTime(generated * 1000)
+      : '';
+  }
+
+  async function refreshSnapshot() {
+    viewRefreshBtn.classList.add('loading');
+    viewRefreshBtn.textContent = 'Loading…';
+    try {
+      const snap = await loadSnapshot();
+      renderSnapshotList(snap.tasks || []);
+      renderSnapshotUpdated(snap.generated);
+      snapshotLoaded = true;
+    } catch (err) {
+      // Still show whatever we last had, if anything, but make the
+      // failure visible rather than silently leaving a stale/blank
+      // screen — same "make mistakes visible" honesty the capture
+      // screen already applies to failed sends.
+      if (!snapshotLoaded) {
+        snapshotListEl.innerHTML = '';
+        const errEl = document.createElement('div');
+        errEl.className = 'snapshot-error';
+        errEl.textContent = navigator.onLine
+          ? 'Could not load — try again'
+          : 'Offline — nothing cached yet';
+        snapshotListEl.appendChild(errEl);
+      }
+    } finally {
+      viewRefreshBtn.classList.remove('loading');
+      viewRefreshBtn.textContent = 'Refresh';
+    }
+  }
+
+  viewRefreshBtn.addEventListener('click', refreshSnapshot);
+
+  // --- tab switching ---
+  const captureTabEl = document.getElementById('captureTab');
+  const viewTabEl = document.getElementById('viewTab');
+
+  document.getElementById('tabBar').addEventListener('click', (e) => {
+    const tabBtn = e.target.closest('.tab-btn');
+    if (!tabBtn) return;
+    const tab = tabBtn.dataset.tab;
+
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === tabBtn));
+    captureTabEl.classList.toggle('active', tab === 'capture');
+    viewTabEl.classList.toggle('active', tab === 'view');
+
+    if (tab === 'capture') {
+      input.focus();
+    } else if (tab === 'view' && !snapshotLoaded) {
+      // Fetch on first open of the tab, not on every switch back to
+      // it — a manual Refresh tap covers "I want the latest now".
+      refreshSnapshot();
+    }
+  });
 
   // -----------------------------------------------------------------
   // Offline queue (IndexedDB) — a failed/offline send is saved here
