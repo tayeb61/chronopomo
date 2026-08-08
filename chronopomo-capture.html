@@ -81,6 +81,157 @@
     padding: 20px 24px 0;
   }
 
+  .help-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid var(--field-border);
+    background: var(--bg-raised);
+    color: var(--ink-dim);
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .help-btn:active { background: var(--field-border); color: var(--ink); }
+
+  /* --- syntax help overlay --- */
+  .help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 10, 0.62);
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 50;
+    padding: 0;
+  }
+
+  .help-overlay.show { display: flex; }
+
+  .help-card {
+    width: 100%;
+    max-width: 480px;
+    max-height: 82dvh;
+    background: var(--bg-raised);
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    border: 1px solid var(--field-border);
+    border-bottom: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .help-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid var(--field-border);
+    flex-shrink: 0;
+  }
+
+  .help-title {
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .help-close {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: none;
+    background: var(--field-border);
+    color: var(--ink-dim);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .help-close:active { color: var(--ink); }
+
+  .help-body {
+    overflow-y: auto;
+    padding: 4px 20px 24px;
+  }
+
+  .help-section {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--field-border);
+  }
+
+  .help-section:last-child { border-bottom: none; }
+
+  .help-section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 5px;
+  }
+
+  .help-syntax {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--tomato);
+    background: var(--tomato-dim);
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+
+  .help-desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-dim);
+    margin: 0 0 8px;
+  }
+
+  .help-desc code, .help-vocab code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--field-border);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  .help-vocab {
+    margin: 0 0 8px;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+
+  .help-vocab li { margin-bottom: 2px; }
+
+  .help-example {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    color: var(--leaf);
+    background: var(--leaf-dim);
+    padding: 8px 11px;
+    border-radius: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .help-example + .help-example { margin-top: 6px; }
+
   .tomato-mark {
     flex-shrink: 0;
     width: 15px;
@@ -538,6 +689,7 @@
       <circle class="fruit" cx="12" cy="14" r="8"/>
     </svg>
     <div class="wordmark">Chronopomo <span>· Capture</span></div>
+    <button type="button" class="help-btn" id="helpBtn" aria-label="Syntax help">?</button>
   </div>
 
   <div class="tab-bar" id="tabBar">
@@ -595,6 +747,93 @@
     <div class="snapshot-list" id="snapshotList"></div>
   </div>
 
+  </div>
+
+  <div class="help-overlay" id="helpOverlay">
+    <div class="help-card">
+      <div class="help-card-header">
+        <span class="help-title">Capture syntax</span>
+        <button type="button" class="help-close" id="helpCloseBtn" aria-label="Close">×</button>
+      </div>
+      <div class="help-body">
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">#tag</span></div>
+          <p class="help-desc">Anywhere in the line. As many as you like. Lowercased automatically.</p>
+          <span class="help-example">Buy milk #errand #home</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">@category</span></div>
+          <p class="help-desc">Anywhere in the line. If you use more than one, the first wins.</p>
+          <span class="help-example">Renew passport @admin</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">!priority</span></div>
+          <p class="help-desc">Accepted words (case-insensitive):</p>
+          <ul class="help-vocab">
+            <li><code>low</code>, <code>l</code></li>
+            <li><code>med</code>, <code>medium</code>, <code>m</code>, <code>normal</code></li>
+            <li><code>high</code>, <code>hi</code>, <code>h</code></li>
+            <li><code>urgent</code>, <code>u</code>, <code>asap</code>, <code>critical</code>, <code>crit</code></li>
+          </ul>
+          <span class="help-example">Ship release !urgent</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">due …</span> / <span class="help-syntax">by …</span></div>
+          <p class="help-desc">Goes at the end of the line. The phrase can be:</p>
+          <ul class="help-vocab">
+            <li><code>today</code>, <code>tomorrow</code>, <code>day after tomorrow</code></li>
+            <li><code>weekend</code>, <code>next week</code>, <code>next month</code></li>
+            <li><code>eow</code> / <code>end of week</code>, <code>eom</code> / <code>end of month</code></li>
+            <li><code>in 3 days</code>, <code>in a week</code>, <code>in 2 months</code></li>
+            <li>a weekday name — <code>friday</code> (nearest upcoming), <code>next friday</code> (the one after)</li>
+            <li>a date — <code>2026-08-20</code>, <code>8/20</code>, <code>8/20/2026</code>, <code>aug 20</code>, <code>20 aug 2026</code></li>
+          </ul>
+          <p class="help-desc">Optionally add a time with <code>at</code> — <code>at 3pm</code>, <code>at 15:30</code>, <code>at noon</code>, <code>at midnight</code>.</p>
+          <span class="help-example">Call dentist due next tue at 2pm</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">every …</span></div>
+          <p class="help-desc">Recurrence. Uses the same date/time words as <code>due</code>. A line can have <code>due</code> or <code>every</code>, not both — whichever pattern matches wins.</p>
+          <ul class="help-vocab">
+            <li><code>every day</code> / <code>daily</code>, <code>every 3 days</code></li>
+            <li><code>every weekday</code> / <code>weekdays</code></li>
+            <li><code>every week</code> / <code>weekly</code>, <code>every 2 weeks</code></li>
+            <li><code>every month</code> / <code>monthly</code>, <code>every 2 months</code></li>
+            <li><code>every monday</code> (a single weekday, repeats weekly)</li>
+            <li><code>every mon, wed, fri</code> or <code>every 2 weeks on mon/wed/fri</code> — needs 2+ days, separated by comma, slash, <code>&</code>, or <code>and</code></li>
+          </ul>
+          <p class="help-desc">Any of the above can take <code>at &lt;time&gt;</code> and <code>starting &lt;phrase&gt;</code> (same phrase vocabulary as <code>due</code>).</p>
+          <span class="help-example">Water plants every 2 days at 8am</span>
+          <span class="help-example">Standup every mon, wed, fri starting next monday</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">remind …</span></div>
+          <p class="help-desc">Also <code>remind me …</code>. Same date/time vocabulary as <code>due</code>. Independent of due/recurrence — a line can have both.</p>
+          <span class="help-example">Submit report due friday remind tomorrow at 9am</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">&gt;&gt; sub, sub, sub</span></div>
+          <p class="help-desc">Must come last in the line. Everything after <code>&gt;&gt;</code> splits on commas into subtasks.</p>
+          <span class="help-example">Plan trip >> book flights, pack bags, print tickets</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title">Multiple tasks</div>
+          <p class="help-desc">Put each task on its own line — every line is parsed and created separately, in the order you typed them.</p>
+          <span class="help-example">Buy milk #errand
+Call dentist due friday
+Water plants every 2 days</span>
+        </div>
+
+      </div>
+    </div>
   </div>
 
 <script>
@@ -1082,6 +1321,29 @@
     });
   }
 
+  // -----------------------------------------------------------------
+  // Syntax help overlay — a static cheat sheet for the parser rules
+  // above, since #tags/@category/due/every/remind/subtasks and their
+  // date-phrase vocabulary aren't at all discoverable from the chip
+  // row alone. Opens on tap, closes on the × button, tapping the dark
+  // backdrop, or Escape.
+  // -----------------------------------------------------------------
+  const helpBtn = document.getElementById('helpBtn');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const helpCloseBtn = document.getElementById('helpCloseBtn');
+
+  function openHelp() { helpOverlay.classList.add('show'); }
+  function closeHelp() { helpOverlay.classList.remove('show'); }
+
+  helpBtn.addEventListener('click', openHelp);
+  helpCloseBtn.addEventListener('click', closeHelp);
+  helpOverlay.addEventListener('click', (e) => {
+    if (e.target === helpOverlay) closeHelp();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && helpOverlay.classList.contains('show')) closeHelp();
+  });
+
   const CONFIG = {
     ntfy: {
       topic: 'chronopomo-eadbb5a0e38f5b5fcb2c470655769006'
@@ -1400,10 +1662,20 @@
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  // A single in-flight flag guards every entry point into capture()
+  // (button tap AND the Cmd/Ctrl+Enter shortcut both call the same
+  // function — without this, firing both in quick succession, or
+  // double-tapping before the first send round-trips, queued the same
+  // text twice). btn.disabled alone isn't enough of a guard since it's
+  // reset mid-function in a couple of branches below.
+  let sending = false;
+
   async function capture() {
+    if (sending) return;
     const text = input.value.trim();
     if (!text) return; // guard, mirrors button disabled state
 
+    sending = true;
     btn.disabled = true;
     btn.textContent = 'Sending…';
     statusEl.textContent = '';
@@ -1414,6 +1686,19 @@
       if (!navigator.onLine) throw new Error('offline');
       await sendNtfy(text);
 
+      // Clear the field and hand focus back right away, rather than
+      // deferring it to the setTimeout below — that used to mean a
+      // person who started typing their next task during the 600ms
+      // "Captured" flash would have it silently wiped out from under
+      // them when the timeout finally fired and blindly reset
+      // input.value. The flash is now purely a button/status
+      // animation; it no longer touches the input at all.
+      input.value = '';
+      refreshButtonState();
+      autoGrowTextarea();
+      renderPreview();
+      input.focus();
+
       btn.classList.add('sent');
       btn.textContent = 'Captured';
       statusEl.textContent = 'Sent';
@@ -1421,16 +1706,14 @@
       setTomatoState('ok');
 
       setTimeout(() => {
-        input.value = '';
-        refreshButtonState();
-        autoGrowTextarea();
-        renderPreview();
         btn.classList.remove('sent');
         btn.textContent = 'Capture';
         statusEl.textContent = '';
         statusEl.className = 'status';
         setTomatoState('idle');
-        input.focus();
+        // Re-derive disabled state instead of assuming empty: the
+        // person may already have typed the next task during the flash.
+        refreshButtonState();
       }, 600);
 
     } catch (err) {
@@ -1440,11 +1723,10 @@
       try {
         await queueCapture(text);
         input.value = '';
-        refreshButtonState();
         autoGrowTextarea();
         renderPreview();
+        input.focus();
         btn.textContent = 'Capture';
-        btn.disabled = false;
         statusEl.textContent = 'Offline — saved, will send automatically';
         statusEl.className = 'status queued';
         setTomatoState('queued');
@@ -1455,11 +1737,20 @@
         // fall back to the old behavior: keep the text so nothing is
         // silently lost, let the person retry by hand.
         btn.textContent = 'Capture';
-        btn.disabled = false;
         statusEl.textContent = 'Failed to send — text kept, try again';
         statusEl.className = 'status error';
         setTomatoState('error');
+      } finally {
+        // Was previously a hardcoded `btn.disabled = false`, which
+        // re-enabled the button even on the queued path where the
+        // field had just been cleared — leaving a live-looking button
+        // that silently did nothing if tapped. Deriving it from actual
+        // content keeps the button's enabled state truthful in every
+        // branch.
+        refreshButtonState();
       }
+    } finally {
+      sending = false;
     }
   }
 
