@@ -570,6 +570,28 @@
     border-color: var(--field-border);
   }
 
+  /* --- idea-mode toggle + chip swap ---
+     Tapping the "/ idea" chip flips the whole entry into idea mode (a
+     leading "/" character, exactly like typing it — this chip is just
+     an explicit affordance for the same convention the desktop app
+     uses). Task-only chips (category/priority/due/every/remind/
+     subtasks) have no meaning for an idea and are hidden rather than
+     left present-but-inert; the idea-only chips (==highlight== and
+     !pin) are the reverse — hidden until idea mode is on. #tag and the
+     toggle chip itself apply in both modes, so they're never hidden. */
+  .chip[data-mode="task"] { display: inline-flex; }
+  .chip[data-mode="idea"] { display: none; }
+  .chips-row.idea-mode .chip[data-mode="task"] { display: none; }
+  .chips-row.idea-mode .chip[data-mode="idea"] { display: inline-flex; }
+
+  .chip.idea-toggle.active {
+    background: var(--tomato-dim);
+    color: var(--tomato);
+    border-color: var(--tomato);
+  }
+
+  .chip.idea-toggle.active .glyph { color: var(--tomato); }
+
   /* --- live parse preview --- */
   .preview-area {
     display: none;
@@ -629,6 +651,8 @@
   .preview-tag.remind { background: #3d2f1a; color: #e0a84f; }
   .preview-tag.hashtag { background: var(--field-border); color: var(--ink-dim); }
   .preview-tag.sub { background: var(--field-border); color: var(--ink-dim); }
+  .preview-tag.idea { background: var(--bg-raised); color: var(--ink-dim); border: 1px solid var(--field-border); }
+  .preview-tag.pin { background: var(--leaf-dim); color: var(--leaf); }
 
   .action-bar {
     padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
@@ -713,13 +737,16 @@
     </div>
 
     <div class="chips-row" id="chipsRow">
+      <button type="button" class="chip idea-toggle" id="ideaToggleChip" data-insert="ideaToggle"><span class="glyph">/</span>idea</button>
       <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
-      <button type="button" class="chip" data-insert="category"><span class="glyph">@</span>category</button>
-      <button type="button" class="chip" data-insert="priority"><span class="glyph">!</span>priority</button>
-      <button type="button" class="chip" data-insert="due">due …</button>
-      <button type="button" class="chip" data-insert="every">every …</button>
-      <button type="button" class="chip" data-insert="remind">remind …</button>
-      <button type="button" class="chip" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
+      <button type="button" class="chip" data-mode="task" data-insert="category"><span class="glyph">@</span>category</button>
+      <button type="button" class="chip" data-mode="task" data-insert="priority"><span class="glyph">!</span>priority</button>
+      <button type="button" class="chip" data-mode="task" data-insert="due">due …</button>
+      <button type="button" class="chip" data-mode="task" data-insert="every">every …</button>
+      <button type="button" class="chip" data-mode="task" data-insert="remind">remind …</button>
+      <button type="button" class="chip" data-mode="task" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
+      <button type="button" class="chip" data-mode="idea" data-insert="highlight"><span class="glyph">=</span>highlight</button>
+      <button type="button" class="chip" data-mode="idea" data-insert="pin"><span class="glyph">!</span>pin</button>
     </div>
 
     <div class="preview-area" id="previewArea"></div>
@@ -765,7 +792,7 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">@category</span></div>
-          <p class="help-desc">Anywhere in the line. If you use more than one, the first wins.</p>
+          <p class="help-desc">Anywhere in the line — first one wins if you use more than one.</p>
           <span class="help-example">Renew passport @admin</span>
         </div>
 
@@ -783,7 +810,7 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">due …</span> / <span class="help-syntax">by …</span></div>
-          <p class="help-desc">Goes at the end of the line. The phrase can be:</p>
+          <p class="help-desc">At the end of the line:</p>
           <ul class="help-vocab">
             <li><code>today</code>, <code>tomorrow</code>, <code>day after tomorrow</code></li>
             <li><code>weekend</code>, <code>next week</code>, <code>next month</code></li>
@@ -798,7 +825,7 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">every …</span></div>
-          <p class="help-desc">Recurrence. Uses the same date/time words as <code>due</code>. A line can have <code>due</code> or <code>every</code>, not both — whichever pattern matches wins.</p>
+          <p class="help-desc">Recurrence — same date/time words as <code>due</code>. Only one of <code>due</code>/<code>every</code> per line; whichever matches wins.</p>
           <ul class="help-vocab">
             <li><code>every day</code> / <code>daily</code>, <code>every 3 days</code></li>
             <li><code>every weekday</code> / <code>weekdays</code></li>
@@ -814,22 +841,33 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">remind …</span></div>
-          <p class="help-desc">Also <code>remind me …</code>. Same date/time vocabulary as <code>due</code>. Independent of due/recurrence — a line can have both.</p>
+          <p class="help-desc">Also <code>remind me …</code> — same vocabulary as <code>due</code>. Independent of due/every; a line can have both.</p>
           <span class="help-example">Submit report due friday remind tomorrow at 9am</span>
         </div>
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">&gt;&gt; sub, sub, sub</span></div>
-          <p class="help-desc">Must come last in the line. Everything after <code>&gt;&gt;</code> splits on commas into subtasks.</p>
+          <p class="help-desc">Last in the line — everything after <code>&gt;&gt;</code> splits on commas into subtasks.</p>
           <span class="help-example">Plan trip >> book flights, pack bags, print tickets</span>
         </div>
 
         <div class="help-section">
           <div class="help-section-title">Multiple tasks</div>
-          <p class="help-desc">Put each task on its own line — every line is parsed and created separately, in the order you typed them.</p>
+          <p class="help-desc">One task per line — each parsed and created separately, in order.</p>
           <span class="help-example">Buy milk #errand
 Call dentist due friday
 Water plants every 2 days</span>
+        </div>
+
+        <div class="help-section">
+          <div class="help-section-title"><span class="help-syntax">/ idea</span></div>
+          <p class="help-desc">Start the entry with <code>/</code> to save an idea instead of a task — no due date, no category, no recurrence, just text. Unlike task lines, the whole entry becomes one idea; newlines stay newlines rather than splitting into separate items.</p>
+          <ul class="help-vocab">
+            <li><code>#tag</code> — anywhere, same as a task. Filed under that tag, stripped from the saved text.</li>
+            <li><code>==highlight==</code> — wraps text to highlight it (Obsidian-compatible). Kept as-is in the saved text.</li>
+            <li><code>!pin</code> / <code>!pinned</code> — anywhere, pins it to the top of the ideas list. Stripped from the saved text.</li>
+          </ul>
+          <span class="help-example">/ Redo the header layout #chronopomo !pin — try ==pill nav== instead of tabs</span>
         </div>
 
       </div>
@@ -887,6 +925,7 @@ Water plants every 2 days</span>
   input.addEventListener('input', () => {
     refreshButtonState();
     autoGrowTextarea();
+    updateChipsVisibility();
     renderPreview();
   });
 
@@ -897,6 +936,7 @@ Water plants every 2 days</span>
     input.value = '';
     refreshButtonState();
     autoGrowTextarea();
+    updateChipsVisibility();
     renderPreview();
     positionActionBar();
     input.focus();
@@ -921,6 +961,7 @@ Water plants every 2 days</span>
   const CHIP_INSERTS = {
     tag: ' #', category: ' @', priority: ' !',
     due: ' due ', every: ' every ', remind: ' remind ', subtasks: ' >> ',
+    pin: ' !pin',
   };
 
   function insertAtCursor(text) {
@@ -935,13 +976,83 @@ Water plants every 2 days</span>
     input.setSelectionRange(newPos, newPos);
     refreshButtonState();
     autoGrowTextarea();
+    updateChipsVisibility();
     renderPreview();
   }
 
-  document.getElementById('chipsRow').addEventListener('click', (e) => {
+  // Wraps the current selection in pre/post (used for ==highlight==)
+  // rather than just inserting at the cursor — selecting a word first
+  // and tapping the chip should highlight that word, not paste
+  // "====" next to it. With nothing selected it inserts an empty
+  // "====" pair and leaves the cursor in the middle, ready to type.
+  function wrapSelection(pre, post) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const before = input.value.slice(0, start);
+    const sel = input.value.slice(start, end);
+    const after = input.value.slice(end);
+    input.value = before + pre + sel + post + after;
+    const newStart = start + pre.length;
+    const newEnd = newStart + sel.length;
+    input.focus();
+    input.setSelectionRange(newStart, newEnd);
+    refreshButtonState();
+    autoGrowTextarea();
+    renderPreview();
+  }
+
+  // Whole entry (not per-line, since an idea is meant to be a single
+  // free-form note that Shift+Enter/newlines can still spread across
+  // multiple lines) is in idea mode exactly when it starts with "/" —
+  // the same convention the desktop app's quick-capture bar uses.
+  function isIdeaMode() {
+    return input.value.startsWith('/');
+  }
+
+  // Flips idea mode by adding/removing that leading "/", preserving
+  // the cursor's position relative to the rest of the text rather than
+  // just parking it at one end — so tapping this mid-sentence doesn't
+  // fling the cursor somewhere unexpected.
+  function toggleIdeaMode() {
+    const wasIdea = isIdeaMode();
+    const selStart = input.selectionStart ?? 0;
+    if (wasIdea) {
+      input.value = input.value.slice(1);
+      const pos = Math.max(0, selStart - 1);
+      input.focus();
+      input.setSelectionRange(pos, pos);
+    } else {
+      input.value = '/' + input.value;
+      const pos = selStart + 1;
+      input.focus();
+      input.setSelectionRange(pos, pos);
+    }
+    refreshButtonState();
+    autoGrowTextarea();
+    updateChipsVisibility();
+    renderPreview();
+  }
+
+  // Swaps the chip row between its task set and its idea set, and
+  // reflects the current mode on the toggle chip itself, so the row
+  // never shows chips (due, every, category…) that don't apply to
+  // whatever's currently being typed.
+  function updateChipsVisibility() {
+    const idea = isIdeaMode();
+    chipsRow.classList.toggle('idea-mode', idea);
+    ideaToggleChip.classList.toggle('active', idea);
+  }
+
+  const chipsRow = document.getElementById('chipsRow');
+  const ideaToggleChip = document.getElementById('ideaToggleChip');
+
+  chipsRow.addEventListener('click', (e) => {
     const chipBtn = e.target.closest('.chip');
     if (!chipBtn) return;
-    const spec = CHIP_INSERTS[chipBtn.dataset.insert];
+    const kind = chipBtn.dataset.insert;
+    if (kind === 'ideaToggle') { toggleIdeaMode(); return; }
+    if (kind === 'highlight') { wrapSelection('==', '=='); return; }
+    const spec = CHIP_INSERTS[kind];
     if (spec) insertAtCursor(spec);
   });
 
@@ -1269,9 +1380,70 @@ Water plants every 2 days</span>
     return span;
   }
 
+  // -----------------------------------------------------------------
+  // Idea preview — a JS port of the desktop app's
+  // _parse_quick_idea_text (pomodoro_timer.py). Deliberately much
+  // simpler than parseQuickTaskPreview above: no due/recurrence/
+  // category parsing, since running that over an idea's own prose
+  // risks misreading a stray weekday name or number as scheduling info
+  // that was never meant. #tags and an optional "!pin"/"!pinned"
+  // marker are the only structure pulled out — both are stripped from
+  // the saved text since they're metadata, not part of the note.
+  // ==highlight== markers are deliberately left untouched in the
+  // saved text (same as the desktop parser), so they're not stripped
+  // here either. Newlines collapse to a single space for this compact
+  // one-line preview chip only — the text that actually gets sent
+  // still has them.
+  // -----------------------------------------------------------------
+  function parseIdeaPreview(raw) {
+    const body = raw.startsWith('/') ? raw.slice(1) : raw;
+    const tagSet = [];
+    let stripped = body.replace(/(?<!\w)#([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
+      tagSet.push(g1.toLowerCase());
+      return '';
+    });
+    const tags = [...new Set(tagSet)];
+    let pinned = false;
+    stripped = stripped.replace(/(?<!\w)!(\w+)/g, (m, g1) => {
+      if (!pinned && (g1.toLowerCase() === 'pin' || g1.toLowerCase() === 'pinned')) {
+        pinned = true;
+        return '';
+      }
+      return m;
+    });
+    const text = stripped.split('\n')
+      .map((line) => line.replace(/\s{2,}/g, ' ').trim())
+      .filter(Boolean)
+      .join(' ');
+    return { text, tags, pinned };
+  }
+
   const previewArea = document.getElementById('previewArea');
 
   function renderPreview() {
+    if (isIdeaMode()) {
+      const raw = input.value;
+      if (raw.trim() === '/' || raw.trim() === '') {
+        previewArea.classList.remove('show');
+        previewArea.innerHTML = '';
+        return;
+      }
+      previewArea.classList.add('show');
+      previewArea.innerHTML = '';
+      const parsed = parseIdeaPreview(raw);
+      const row = document.createElement('div');
+      row.className = 'preview-line';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'preview-title';
+      titleSpan.textContent = parsed.text || '(empty idea)';
+      row.appendChild(titleSpan);
+      row.appendChild(makeTag('✎ idea', 'idea'));
+      if (parsed.pinned) row.appendChild(makeTag('★ pinned', 'pin'));
+      for (const t of parsed.tags) row.appendChild(makeTag('#' + t, 'hashtag'));
+      previewArea.appendChild(row);
+      return;
+    }
+
     const lines = input.value.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) {
       previewArea.classList.remove('show');
