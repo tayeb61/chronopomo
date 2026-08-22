@@ -786,8 +786,9 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">#tag</span></div>
-          <p class="help-desc">Anywhere in the line. As many as you like. Lowercased automatically.</p>
+          <p class="help-desc">Anywhere in the line. As many as you like. Casing is kept as typed — matching is case-insensitive, so <code>#Errand</code> and <code>#errand</code> count as the same tag. Wrap in quotes for a tag with spaces or punctuation in it.</p>
           <span class="help-example">Buy milk #errand #home</span>
+          <span class="help-example">Redo onboarding #"design system"</span>
         </div>
 
         <div class="help-section">
@@ -863,7 +864,7 @@ Water plants every 2 days</span>
           <div class="help-section-title"><span class="help-syntax">/ idea</span></div>
           <p class="help-desc">Start the entry with <code>/</code> to save an idea instead of a task — no due date, no category, no recurrence, just text. Unlike task lines, the whole entry becomes one idea; newlines stay newlines rather than splitting into separate items.</p>
           <ul class="help-vocab">
-            <li><code>#tag</code> — anywhere, same as a task. Filed under that tag, stripped from the saved text.</li>
+            <li><code>#tag</code> — anywhere, same as a task, including the quoted <code>#"multi word"</code> form. Filed under that tag, stripped from the saved text.</li>
             <li><code>==highlight==</code> — wraps text to highlight it (Obsidian-compatible). Kept as-is in the saved text.</li>
             <li><code>!pin</code> / <code>!pinned</code> — anywhere, pins it to the top of the ideas list. Stripped from the saved text.</li>
           </ul>
@@ -1094,6 +1095,11 @@ Water plants every 2 days</span>
     '\\s+(?:every\\s+(?:(\\d+)\\s+)?(days?|weekdays?|weeks?|months?|' + DAY_ALT + ')' +
     '|(daily|weekdays|weekly|monthly))' + AT_CLAUSE + STARTING_CLAUSE + '\\s*$', 'i');
 
+  // Tags — mirrors _QUICK_TAG_RE: a bare token (#work) or a quoted
+  // form (#"design system") that allows spaces/punctuation inside it.
+  // Matched anywhere in the text, not end-anchored.
+  const QUICK_TAG_RE = /(?<!\w)#(?:"([^"]+)"|([A-Za-z0-9_][A-Za-z0-9_-]*))/g;
+
   function pad2(n) { return String(n).padStart(2, '0'); }
 
   function toISO(d) {
@@ -1249,6 +1255,38 @@ Water plants every 2 days</span>
     return [resolved !== null, resolved];
   }
 
+  // Trims, drops empties, and case-insensitively dedupes a list of tag
+  // strings, keeping the first-seen casing — a JS port of the desktop
+  // app's _clean_tag_list. So typing "Deep-Work" once is what's kept
+  // even if "deep-work" shows up again later in the same line.
+  function cleanTagList(raw) {
+    const seen = new Set();
+    const cleaned = [];
+    for (let tag of raw) {
+      tag = (tag == null ? '' : String(tag)).trim();
+      if (!tag) continue;
+      const key = tag.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(tag);
+    }
+    return cleaned;
+  }
+
+  // Pulls every #tag out of text (bare or quoted, see QUICK_TAG_RE),
+  // case-insensitively deduping with first-seen casing kept, and
+  // returns [tags, textWithTagsStripped] — a JS port of the tag-
+  // extraction step shared by _parse_quick_task_text and
+  // _parse_quick_idea_text.
+  function extractQuickTags(text) {
+    const raw = [];
+    const stripped = text.replace(QUICK_TAG_RE, (m, qtag, tag) => {
+      raw.push(qtag !== undefined ? qtag : tag);
+      return '';
+    });
+    return [cleanTagList(raw), stripped];
+  }
+
   function parseQuickTaskPreview(rawText) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1261,12 +1299,8 @@ Water plants every 2 days</span>
       subtasks = subMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
     }
 
-    const tagSet = [];
-    let stripped = titlePart.replace(/(?<!\w)#([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
-      tagSet.push(g1.toLowerCase());
-      return '';
-    });
-    const tags = [...new Set(tagSet)];
+    const [tags, afterTags] = extractQuickTags(titlePart);
+    let stripped = afterTags;
 
     const catMatches = [];
     stripped = stripped.replace(/(?<!\w)@([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
@@ -1386,23 +1420,19 @@ Water plants every 2 days</span>
   // simpler than parseQuickTaskPreview above: no due/recurrence/
   // category parsing, since running that over an idea's own prose
   // risks misreading a stray weekday name or number as scheduling info
-  // that was never meant. #tags and an optional "!pin"/"!pinned"
-  // marker are the only structure pulled out — both are stripped from
-  // the saved text since they're metadata, not part of the note.
-  // ==highlight== markers are deliberately left untouched in the
-  // saved text (same as the desktop parser), so they're not stripped
-  // here either. Newlines collapse to a single space for this compact
-  // one-line preview chip only — the text that actually gets sent
-  // still has them.
+  // that was never meant. #tags (bare or quoted, see QUICK_TAG_RE) and
+  // an optional "!pin"/"!pinned" marker are the only structure pulled
+  // out — both are stripped from the saved text since they're
+  // metadata, not part of the note. ==highlight== markers are
+  // deliberately left untouched in the saved text (same as the desktop
+  // parser), so they're not stripped here either. Newlines collapse to
+  // a single space for this compact one-line preview chip only — the
+  // text that actually gets sent still has them.
   // -----------------------------------------------------------------
   function parseIdeaPreview(raw) {
     const body = raw.startsWith('/') ? raw.slice(1) : raw;
-    const tagSet = [];
-    let stripped = body.replace(/(?<!\w)#([A-Za-z0-9_][A-Za-z0-9_-]*)/g, (m, g1) => {
-      tagSet.push(g1.toLowerCase());
-      return '';
-    });
-    const tags = [...new Set(tagSet)];
+    const [tags, afterTags] = extractQuickTags(body);
+    let stripped = afterTags;
     let pinned = false;
     stripped = stripped.replace(/(?<!\w)!(\w+)/g, (m, g1) => {
       if (!pinned && (g1.toLowerCase() === 'pin' || g1.toLowerCase() === 'pinned')) {
@@ -1537,6 +1567,11 @@ Water plants every 2 days</span>
   // since=latest) to grab the most recent published message rather
   // than opening a held-open event stream, matching the fetch-once
   // philosophy the spec calls for on this screen.
+  //
+  // Note: the desktop app also has a separate, independent "alert
+  // topic" for real push notifications (due/overdue tasks), but that's
+  // meant to be subscribed to from the actual ntfy phone app — not
+  // this page — so it has no counterpart here.
   // -----------------------------------------------------------------
   const SNAPSHOT_CONFIG = {
     // Independently-generated topic, separate from CONFIG.ntfy.topic
