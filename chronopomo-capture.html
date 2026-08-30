@@ -465,6 +465,20 @@
     text-overflow: ellipsis;
   }
 
+  .pending-item-status {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--ink-dim);
+    flex-shrink: 0;
+    background: var(--field-border);
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+
+  .pending-item-status.unconfirmed { color: var(--tomato); background: var(--tomato-dim); }
+
   .pending-item-time {
     font-size: 11px;
     color: var(--ink-dim);
@@ -1554,10 +1568,38 @@ Water plants every 2 days</span>
 
   const statusEl = document.getElementById('status');
 
-  async function sendNtfy(text) {
+  // Client-generated id for one captured message, carried to the PC
+  // via ntfy's Title header (see sendNtfy) rather than embedded in the
+  // message body — the body is exactly what the desktop parser reads
+  // as task/idea text, so anything id-related has to travel alongside
+  // it, not inside it. Used to match an ack back to the right queued
+  // item (see pollAcks) and to let the PC recognize a resend of the
+  // same message as "already handled" (see resendStaleUnconfirmed).
+  function generateClientId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  }
+
+  async function sendNtfy(text, clientId) {
     const url = `https://ntfy.sh/${CONFIG.ntfy.topic}`;
-    const res = await fetch(url, { method: 'POST', body: text });
-    if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
+    // Without a timeout, a hung request (flaky connection, phone
+    // switching networks mid-request) never resolves or rejects —
+    // which used to mean flushQueue's `flushing` guard stayed true
+    // forever, silently wedging the entire offline queue until the
+    // page was reloaded. 15s is generous for a plain-text POST.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: text,
+        headers: clientId ? { 'Title': clientId } : undefined,
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // -----------------------------------------------------------------
@@ -1582,6 +1624,34 @@ Water plants every 2 days</span>
     // this screen will show anything.
     topic: 'chronopomo-snapshot-8a35b55e03d3edc2dbe6a24da139ad0d'
   };
+
+  // -----------------------------------------------------------------
+  // Delivery confirmation for the capture topic above. ntfy.sh only
+  // holds a message in cache for 12 hours (see docs.ntfy.sh/config —
+  // cache-duration defaults to 12h). If the PC app isn't running and
+  // connected within that window — laptop asleep overnight is the
+  // common case — a message this page successfully POSTed can still
+  // vanish off the server before the PC ever sees it, with no error on
+  // either side. This ack topic closes that gap: the PC publishes a
+  // short ack (echoing the client id above) once it's actually turned
+  // a message into a task, and until that ack arrives this page keeps
+  // the message in its own local "unconfirmed" store and periodically
+  // re-POSTs it (see resendStaleUnconfirmed) to refresh its age in
+  // ntfy's cache. Leave ACK_CONFIG.topic blank to turn this off — quick
+  // capture still works exactly as before, just without the
+  // missed-overnight protection.
+  // -----------------------------------------------------------------
+  const ACK_CONFIG = {
+    // Paste the "ack topic" generated in the desktop app's Settings ▸
+    // Phone Quick-Add ▸ delivery-confirmation section.
+    topic: ''
+  };
+  const ACK_POLL_INTERVAL_MS = 30000;
+  const RESEND_AFTER_MS = 10 * 60 * 60 * 1000; // 10h — inside ntfy's 12h cache window
+  // A normal ack round-trip takes a few seconds; don't flash "waiting
+  // to send" in the UI for that — only surface an unconfirmed item once
+  // it's been outstanding long enough that something's actually amiss.
+  const UNCONFIRMED_UI_THRESHOLD_MS = 60000;
 
   const snapshotListEl = document.getElementById('snapshotList');
   const viewUpdatedEl = document.getElementById('viewUpdated');
@@ -1686,16 +1756,22 @@ Water plants every 2 days</span>
   });
 
   // -----------------------------------------------------------------
-  // Offline queue (IndexedDB) — a failed/offline send is saved here
-  // instead of just sitting unsent in the text field. Survives a full
-  // page reload or the tab being killed, since it's real durable
-  // storage rather than a JS variable. A tiny 'meta' store alongside
-  // it holds the ntfy topic, written on every load, so the Service
-  // Worker (a separate JS context with no access to CONFIG above) can
-  // read the current topic on its own when a background sync fires.
+  // Local durable storage (IndexedDB). Two queues live here, both
+  // surviving a full page reload or the tab being killed:
+  //
+  //  - 'pending': a capture that failed to even leave the phone (no
+  //    network, or ntfy briefly unreachable at send time). Exactly the
+  //    original offline queue.
+  //  - 'unconfirmed': a capture that DID leave the phone (ntfy returned
+  //    200) but hasn't yet been acked by the PC. New — this is what
+  //    closes the "PC missed the 12h cache window" gap described above.
+  //
+  // A 'meta' store alongside them holds small key/value bits the
+  // Service Worker and the ack poller need across reloads (the current
+  // ntfy topic, and the ack stream's poll cursor).
   // -----------------------------------------------------------------
   const DB_NAME = 'chronopomo-capture';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
 
   function openDb() {
     return new Promise((resolve, reject) => {
@@ -1707,6 +1783,9 @@ Water plants every 2 days</span>
         }
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains('unconfirmed')) {
+          db.createObjectStore('unconfirmed', { keyPath: 'clientId' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -1724,11 +1803,21 @@ Water plants every 2 days</span>
     });
   }
 
-  async function queueCapture(text) {
+  async function readMeta(key) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('meta', 'readonly');
+      const req = tx.objectStore('meta').get(key);
+      req.onsuccess = () => resolve(req.result ? req.result.value : null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function queueCapture(text, clientId) {
     const db = await openDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('pending', 'readwrite');
-      tx.objectStore('pending').add({ text, createdAt: Date.now() });
+      tx.objectStore('pending').add({ clientId, text, createdAt: Date.now() });
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -1754,6 +1843,39 @@ Water plants every 2 days</span>
     });
   }
 
+  // put() rather than add(): also used to refresh sentAt on a resend of
+  // an item that's already in this store (see resendStaleUnconfirmed),
+  // so it has to be an upsert, not an insert-only.
+  async function putUnconfirmed(clientId, text, sentAt) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('unconfirmed', 'readwrite');
+      tx.objectStore('unconfirmed').put({ clientId, text, sentAt });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function removeUnconfirmed(clientId) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('unconfirmed', 'readwrite');
+      tx.objectStore('unconfirmed').delete(clientId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function getUnconfirmed() {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('unconfirmed', 'readonly');
+      const req = tx.objectStore('unconfirmed').getAll();
+      req.onsuccess = () => resolve(req.result.sort((a, b) => a.sentAt - b.sentAt));
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   // --- pending list UI ---
   const pendingBar = document.getElementById('pendingBar');
   const pendingBadge = document.getElementById('pendingBadge');
@@ -1770,9 +1892,48 @@ Water plants every 2 days</span>
     return hrs === 1 ? '1 hr ago' : `${hrs} hr ago`;
   }
 
+  function buildPendingRow(text, ts, statusLabel, statusCls, onRemove) {
+    const row = document.createElement('div');
+    row.className = 'pending-item';
+
+    const textEl = document.createElement('span');
+    textEl.className = 'pending-item-text';
+    textEl.textContent = text;
+
+    const statusEl2 = document.createElement('span');
+    statusEl2.className = 'pending-item-status' + (statusCls ? ' ' + statusCls : '');
+    statusEl2.textContent = statusLabel;
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'pending-item-time';
+    timeEl.textContent = relativeTime(ts);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'pending-item-remove';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Discard';
+    removeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await onRemove();
+      renderPendingList();
+    });
+
+    row.append(textEl, statusEl2, timeEl, removeBtn);
+    return row;
+  }
+
+  // Shows two kinds of "not done yet" items side by side: still-queued
+  // (never left the phone) and sent-but-unconfirmed (ntfy accepted it,
+  // no ack from the PC yet). An unconfirmed item only appears once it's
+  // been outstanding past UNCONFIRMED_UI_THRESHOLD_MS, so a normal
+  // few-second ack round trip never causes a flash in this list.
   async function renderPendingList() {
-    const items = await getPending();
-    if (items.length === 0) {
+    const pendingItems = await getPending();
+    const unconfirmedItems = ACK_CONFIG.topic
+      ? (await getUnconfirmed()).filter((it) => Date.now() - it.sentAt >= UNCONFIRMED_UI_THRESHOLD_MS)
+      : [];
+    const total = pendingItems.length + unconfirmedItems.length;
+    if (total === 0) {
       pendingBar.classList.remove('show');
       pendingListEl.classList.remove('open');
       pendingListEl.innerHTML = '';
@@ -1782,32 +1943,17 @@ Water plants every 2 days</span>
     }
     setTomatoState('queued');
     pendingBar.classList.add('show');
-    pendingBadge.textContent = String(items.length);
+    pendingBadge.textContent = String(total);
     pendingListEl.innerHTML = '';
-    for (const item of items) {
-      const row = document.createElement('div');
-      row.className = 'pending-item';
-
-      const textEl = document.createElement('span');
-      textEl.className = 'pending-item-text';
-      textEl.textContent = item.text;
-
-      const timeEl = document.createElement('span');
-      timeEl.className = 'pending-item-time';
-      timeEl.textContent = relativeTime(item.createdAt);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'pending-item-remove';
-      removeBtn.textContent = '×';
-      removeBtn.title = 'Discard';
-      removeBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await deletePending(item.id);
-        renderPendingList();
-      });
-
-      row.append(textEl, timeEl, removeBtn);
-      pendingListEl.appendChild(row);
+    for (const item of pendingItems) {
+      pendingListEl.appendChild(buildPendingRow(
+        item.text, item.createdAt, 'Queued', '',
+        () => deletePending(item.id)));
+    }
+    for (const item of unconfirmedItems) {
+      pendingListEl.appendChild(buildPendingRow(
+        item.text, item.sentAt, 'Unconfirmed', 'unconfirmed',
+        () => removeUnconfirmed(item.clientId)));
     }
   }
 
@@ -1817,7 +1963,7 @@ Water plants every 2 days</span>
     pendingChevron.classList.toggle('open', pendingListOpen);
   });
 
-  // --- flushing the queue ---
+  // --- flushing the offline (never-sent) queue ---
   let flushing = false;
 
   async function flushQueue() {
@@ -1827,8 +1973,9 @@ Water plants every 2 days</span>
       const items = await getPending();
       for (const item of items) {
         try {
-          await sendNtfy(item.text);
+          await sendNtfy(item.text, item.clientId);
           await deletePending(item.id);
+          if (ACK_CONFIG.topic) await putUnconfirmed(item.clientId, item.text, Date.now());
         } catch (err) {
           // Still offline (or ntfy's briefly down) — stop here rather
           // than hammer every remaining item; the next trigger (online
@@ -1840,6 +1987,67 @@ Water plants every 2 days</span>
     } finally {
       flushing = false;
       renderPendingList();
+    }
+  }
+
+  // --- ack polling + resend for the sent-but-unconfirmed queue ---
+  let polling = false;
+
+  async function pollAcks() {
+    if (!ACK_CONFIG.topic || polling || !navigator.onLine) return;
+    polling = true;
+    try {
+      const since = (await readMeta('ackSince')) || 'all';
+      const url = `https://ntfy.sh/${ACK_CONFIG.topic}/json?poll=1&since=${encodeURIComponent(since)}`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      let res;
+      try {
+        res = await fetch(url, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!res.ok) return;
+      const lines = (await res.text()).trim().split('\n').filter(Boolean);
+      let lastId = null;
+      for (const line of lines) {
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.event !== 'message') continue;
+        lastId = msg.id || lastId;
+        const ackedId = msg.title;
+        if (ackedId) await removeUnconfirmed(ackedId);
+      }
+      if (lastId) await writeMeta('ackSince', lastId);
+    } catch (err) {
+      // offline or ntfy hiccup — the next scheduled poll picks it back up
+    } finally {
+      polling = false;
+      renderPendingList();
+    }
+  }
+
+  // Refreshes any unconfirmed item that's been waiting longer than
+  // RESEND_AFTER_MS by re-POSTing it with the SAME client id — this is
+  // what actually solves the missed-overnight problem: as long as the
+  // phone gets online at least once every ~10h, the message keeps
+  // getting its age in ntfy's 12h cache reset before it can expire, no
+  // matter how long the PC itself stays asleep. The PC's own dedup
+  // (keyed on that same client id, see _create_task_from_phone) is what
+  // keeps a late resend from ever creating a duplicate task once it
+  // finally does arrive.
+  async function resendStaleUnconfirmed() {
+    if (!ACK_CONFIG.topic || !navigator.onLine) return;
+    const items = await getUnconfirmed();
+    const now = Date.now();
+    for (const item of items) {
+      if (now - item.sentAt < RESEND_AFTER_MS) continue;
+      try {
+        await sendNtfy(item.text, item.clientId);
+        await putUnconfirmed(item.clientId, item.text, now);
+      } catch (err) {
+        break; // offline/ntfy down right now — try again next cycle
+      }
     }
   }
 
@@ -1856,14 +2064,23 @@ Water plants every 2 days</span>
     }
   }
 
-  window.addEventListener('online', flushQueue);
+  function runAllQueueWork() {
+    flushQueue();
+    pollAcks();
+    resendStaleUnconfirmed();
+  }
+
+  window.addEventListener('online', runAllQueueWork);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') flushQueue();
+    if (document.visibilityState === 'visible') runAllQueueWork();
   });
   // Soft fallback poll while the tab is actually open, since not every
   // platform fires a reliable 'online' event and background sync isn't
-  // universal — this only does anything when there's something queued.
-  setInterval(() => { if (!pendingBar.classList.contains('show')) return; flushQueue(); }, 20000);
+  // universal. flushQueue only does anything when something's queued;
+  // pollAcks/resendStaleUnconfirmed are cheap no-ops when ACK_CONFIG.topic
+  // is blank or there's nothing unconfirmed, so this is safe to run on a
+  // fixed interval regardless of what's currently pending.
+  setInterval(runAllQueueWork, ACK_POLL_INTERVAL_MS);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -1889,9 +2106,12 @@ Water plants every 2 days</span>
     statusEl.className = 'status';
     setTomatoState('sending');
 
+    const clientId = generateClientId();
+
     try {
       if (!navigator.onLine) throw new Error('offline');
-      await sendNtfy(text);
+      await sendNtfy(text, clientId);
+      if (ACK_CONFIG.topic) await putUnconfirmed(clientId, text, Date.now());
 
       // Clear the field and hand focus back right away, rather than
       // deferring it to the setTimeout below — that used to mean a
@@ -1928,7 +2148,7 @@ Water plants every 2 days</span>
       // storage, save it there instead of leaving unsent text sitting
       // only in the DOM (which a killed tab would lose outright).
       try {
-        await queueCapture(text);
+        await queueCapture(text, clientId);
         input.value = '';
         autoGrowTextarea();
         renderPreview();
@@ -1977,7 +2197,7 @@ Water plants every 2 days</span>
   // if this file is redeployed with a different topic later.
   writeMeta('ntfyTopic', CONFIG.ntfy.topic).catch(() => {});
   renderPendingList();
-  flushQueue();
+  runAllQueueWork();
 
 </script>
 
