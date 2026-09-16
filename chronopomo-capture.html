@@ -12,12 +12,6 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Font CSS loaded non-render-blocking: preload it, then swap its
-     media to 'all' once fetched, so first paint doesn't wait on a
-     round trip to fonts.googleapis.com. The system-font fallback
-     (-apple-system etc.) covers the brief gap before the swap, and
-     font-display=swap in the URL keeps individual glyphs from going
-     invisible while the actual font file downloads after that. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"></noscript>
@@ -48,12 +42,6 @@
     overscroll-behavior: none;
   }
 
-  /* Outer viewport: on an actual phone this is the whole screen and
-     .app-shell fills it edge to edge (max-width is moot at that
-     width). On anything wider — a desktop browser tab, a tablet — it
-     centers a fixed phone-width column instead of letting the layout
-     stretch full-bleed, since every measurement inside (font sizes,
-     tap targets, the chip row, etc.) was tuned for a phone screen. */
   body {
     display: flex;
     flex-direction: row;
@@ -73,7 +61,6 @@
              env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
   }
 
-  /* --- header: wordmark + the tomato mark doubling as send-status --- */
   .header {
     display: flex;
     align-items: center;
@@ -101,7 +88,6 @@
 
   .help-btn:active { background: var(--field-border); color: var(--ink); }
 
-  /* --- syntax help overlay --- */
   .help-overlay {
     display: none;
     position: fixed;
@@ -251,7 +237,6 @@
     transition: fill 200ms ease;
   }
 
-  /* idle -> outline only (above). states below fill the fruit in. */
   .tomato-mark.sending .fruit {
     stroke: var(--tomato);
     fill: var(--tomato);
@@ -290,7 +275,6 @@
     color: var(--ink-dim);
   }
 
-  /* --- tab switcher: Capture / View --- */
   .tab-bar {
     display: flex;
     gap: 6px;
@@ -319,7 +303,6 @@
   .tab-panel { display: none; flex-direction: column; flex: 1; min-height: 0; }
   .tab-panel.active { display: flex; }
 
-  /* --- View tab: read-only task snapshot --- */
   .view-toolbar {
     display: flex;
     align-items: center;
@@ -501,8 +484,6 @@
     background: var(--field-border);
   }
 
-  /* --- the compose card: input lifted off the background, not blended
-     into it, with a focus ring that lights up in the accent --- */
   .field-wrap {
     padding: 16px 20px 4px;
   }
@@ -534,9 +515,6 @@
     font-weight: 500;
     letter-spacing: -0.01em;
     caret-color: var(--tomato);
-    /* height is driven by JS (autoGrowTextarea) as content changes, so
-       no fixed flex:1/height here — the field grows with what's typed
-       instead of always claiming all the vertical space up front */
     max-height: 42vh;
     overflow-y: auto;
   }
@@ -546,7 +524,6 @@
     font-weight: 400;
   }
 
-  /* --- syntax chips row --- */
   .chips-row {
     display: flex;
     gap: 8px;
@@ -584,15 +561,6 @@
     border-color: var(--field-border);
   }
 
-  /* --- idea-mode toggle + chip swap ---
-     Tapping the "/ idea" chip flips the whole entry into idea mode (a
-     leading "/" character, exactly like typing it — this chip is just
-     an explicit affordance for the same convention the desktop app
-     uses). Task-only chips (category/priority/due/every/remind/
-     subtasks) have no meaning for an idea and are hidden rather than
-     left present-but-inert; the idea-only chips (==highlight== and
-     !pin) are the reverse — hidden until idea mode is on. #tag and the
-     toggle chip itself apply in both modes, so they're never hidden. */
   .chip[data-mode="task"] { display: inline-flex; }
   .chip[data-mode="idea"] { display: none; }
   .chips-row.idea-mode .chip[data-mode="task"] { display: none; }
@@ -606,7 +574,6 @@
 
   .chip.idea-toggle.active .glyph { color: var(--tomato); }
 
-  /* --- live parse preview --- */
   .preview-area {
     display: none;
     flex-direction: column;
@@ -627,9 +594,6 @@
     border: 1px solid var(--field-border);
   }
 
-  /* Numbered because these lines genuinely are an ordered list — the
-     order they're typed in is the order the tasks get created in — not
-     decoration for its own sake. */
   .preview-index {
     flex-shrink: 0;
     width: 18px;
@@ -670,10 +634,6 @@
 
   .action-bar {
     padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
-    /* transform is nudged upward by JS (positionActionBar) whenever the
-       on-screen keyboard eats into the visual viewport, so the button
-       stays pinned right above the keyboard instead of being covered
-       by it or left stranded off-screen below it */
     transition: transform 120ms ease;
   }
 
@@ -715,6 +675,103 @@
 
   @media (prefers-reduced-motion: reduce) {
     button.send { transition: none; }
+  }
+
+  /* --- pull-to-refresh indicator (View tab) --- */
+  .pull-indicator {
+    position: absolute;
+    top: env(safe-area-inset-top, 0);
+    left: 50%;
+    width: 34px;
+    height: 34px;
+    margin-left: -17px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: var(--bg-raised);
+    border: 1px solid var(--field-border);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    pointer-events: none;
+  }
+
+  .pull-indicator.show { display: flex; opacity: 1; }
+
+  .pull-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--ink-dim);
+    transition: background 120ms ease, transform 160ms ease;
+  }
+
+  .pull-indicator.ready .pull-dot {
+    background: var(--tomato);
+    transform: scale(1.3);
+  }
+
+  #viewTab { position: relative; }
+
+  /* --- add-to-home-screen toast --- */
+  .install-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0));
+    transform: translate(-50%, 140%);
+    width: calc(100% - 32px);
+    max-width: 448px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--field-border);
+    border-radius: 16px;
+    padding: 12px 10px 12px 16px;
+    box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+    z-index: 40;
+    transition: transform 220ms ease;
+  }
+
+  .install-toast.show { transform: translate(-50%, 0); }
+
+  .install-toast-text {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+
+  .install-toast-btn {
+    flex-shrink: 0;
+    border: none;
+    background: var(--tomato);
+    color: #f5f0ff;
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 999px;
+  }
+
+  .install-toast-dismiss {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--ink-dim);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .install-toast, .pull-indicator, .pull-dot { transition: none; }
   }
 </style>
 </head>
@@ -765,7 +822,7 @@
 
     <div class="preview-area" id="previewArea"></div>
 
-    <div class="status" id="status"></div>
+    <div class="status" id="status" aria-live="polite"></div>
 
     <div class="pending-bar" id="pendingBar">
       <span class="pending-badge" id="pendingBadge">0</span>
@@ -781,6 +838,7 @@
   </div>
 
   <div class="tab-panel" id="viewTab">
+    <div class="pull-indicator" id="pullIndicator"><span class="pull-dot"></span></div>
     <div class="view-toolbar">
       <span class="view-updated" id="viewUpdated"></span>
       <button type="button" class="view-refresh" id="viewRefreshBtn">Refresh</button>
@@ -788,6 +846,12 @@
     <div class="snapshot-list" id="snapshotList"></div>
   </div>
 
+  </div>
+
+  <div class="install-toast" id="installToast">
+    <span class="install-toast-text">Add Chronopomo to your home screen for one-tap capture</span>
+    <button type="button" class="install-toast-btn" id="installBtn">Add</button>
+    <button type="button" class="install-toast-dismiss" id="installDismissBtn" aria-label="Dismiss">×</button>
   </div>
 
   <div class="help-overlay" id="helpOverlay">
@@ -856,8 +920,14 @@
 
         <div class="help-section">
           <div class="help-section-title"><span class="help-syntax">remind …</span></div>
-          <p class="help-desc">Also <code>remind me …</code> — same vocabulary as <code>due</code>. Independent of due/every; a line can have both.</p>
+          <p class="help-desc">Also <code>remind me …</code>. Two shapes:</p>
+          <ul class="help-vocab">
+            <li>a one-off — same date/time vocabulary as <code>due</code></li>
+            <li>a recurring/hourly one — same vocabulary as <code>every</code>, plus <code>every N hours</code>, tried first</li>
+          </ul>
+          <p class="help-desc">Independent of due/every — a line can carry both a due date and its own separate reminder.</p>
           <span class="help-example">Submit report due friday remind tomorrow at 9am</span>
+          <span class="help-example">Take a break remind every 2 hours</span>
         </div>
 
         <div class="help-section">
@@ -895,36 +965,20 @@ Water plants every 2 days</span>
   const actionBar = document.querySelector('.action-bar');
   const tomatoMark = document.getElementById('tomatoMark');
 
-  // The header mark doubles as a send-status indicator rather than
-  // sitting there as pure decoration: outline (idle) -> filled +
-  // pulsing (sending) -> leaf-green (sent) -> tomato ring (queued
-  // offline) -> red (failed, non-queue error).
   function setTomatoState(state) {
     tomatoMark.setAttribute('class', 'tomato-mark' + (state !== 'idle' ? ' ' + state : ''));
   }
 
   function refreshButtonState() {
-    // empty-input guard — mirrors the MacroDroid constraint we built:
-    // whitespace-only text does not count as something to send
     const hasContent = input.value.trim().length > 0;
     btn.disabled = !hasContent;
   }
 
-  // Grows the field to fit what's been typed (up to 45vh, then it
-  // scrolls internally) instead of always claiming a full-height box
-  // up front — resetting to 'auto' first is what lets it *shrink* back
-  // down correctly when text is deleted, not just grow.
   function autoGrowTextarea() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, window.innerHeight * 0.45) + 'px';
   }
 
-  // Keeps the Capture button pinned just above the on-screen keyboard.
-  // The 'interactive-widget=resizes-content' viewport meta tag already
-  // handles this natively on modern Chrome/Android by shrinking the
-  // layout viewport itself, making this a no-op there; this is the
-  // fallback for iOS Safari and older Android, which don't respect that
-  // meta tag but do support the visualViewport API this reads from.
   function positionActionBar() {
     if (!window.visualViewport) return;
     const vv = window.visualViewport;
@@ -944,9 +998,6 @@ Water plants every 2 days</span>
     renderPreview();
   });
 
-  // opens blank and focused every time — no repeat of the
-  // "shows the last task" bug we hit in MacroDroid, since this
-  // field is never pre-filled from any stored value to begin with
   window.addEventListener('load', () => {
     input.value = '';
     refreshButtonState();
@@ -957,22 +1008,12 @@ Water plants every 2 days</span>
     input.focus();
   });
 
-  // also reset on becoming visible again (e.g. switching back from
-  // another app), so a stale draft never lingers if the page was
-  // merely backgrounded rather than fully reloaded
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && captureTabEl.classList.contains('active')) {
       input.focus();
     }
   });
 
-  // -----------------------------------------------------------------
-  // Syntax chips — tap one to insert the marker at the cursor instead
-  // of remembering/typing the punctuation. A leading space on the
-  // inserted text is dropped when the cursor already sits at the start
-  // of the field or right after whitespace, so tapping never leaves a
-  // double space behind.
-  // -----------------------------------------------------------------
   const CHIP_INSERTS = {
     tag: ' #', category: ' @', priority: ' !',
     due: ' due ', every: ' every ', remind: ' remind ', subtasks: ' >> ',
@@ -995,11 +1036,6 @@ Water plants every 2 days</span>
     renderPreview();
   }
 
-  // Wraps the current selection in pre/post (used for ==highlight==)
-  // rather than just inserting at the cursor — selecting a word first
-  // and tapping the chip should highlight that word, not paste
-  // "====" next to it. With nothing selected it inserts an empty
-  // "====" pair and leaves the cursor in the middle, ready to type.
   function wrapSelection(pre, post) {
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? input.value.length;
@@ -1016,18 +1052,10 @@ Water plants every 2 days</span>
     renderPreview();
   }
 
-  // Whole entry (not per-line, since an idea is meant to be a single
-  // free-form note that Shift+Enter/newlines can still spread across
-  // multiple lines) is in idea mode exactly when it starts with "/" —
-  // the same convention the desktop app's quick-capture bar uses.
   function isIdeaMode() {
     return input.value.startsWith('/');
   }
 
-  // Flips idea mode by adding/removing that leading "/", preserving
-  // the cursor's position relative to the rest of the text rather than
-  // just parking it at one end — so tapping this mid-sentence doesn't
-  // fling the cursor somewhere unexpected.
   function toggleIdeaMode() {
     const wasIdea = isIdeaMode();
     const selStart = input.selectionStart ?? 0;
@@ -1048,10 +1076,6 @@ Water plants every 2 days</span>
     renderPreview();
   }
 
-  // Swaps the chip row between its task set and its idea set, and
-  // reflects the current mode on the toggle chip itself, so the row
-  // never shows chips (due, every, category…) that don't apply to
-  // whatever's currently being typed.
   function updateChipsVisibility() {
     const idea = isIdeaMode();
     chipsRow.classList.toggle('idea-mode', idea);
@@ -1071,21 +1095,6 @@ Water plants every 2 days</span>
     if (spec) insertAtCursor(spec);
   });
 
-  // -----------------------------------------------------------------
-  // Live parse preview — a JS port of the desktop app's
-  // _parse_quick_task_text (pomodoro_timer.py), kept in step with the
-  // same marker precedence: subtasks split first, then #tags/@category/
-  // !priority (matched anywhere), then a trailing remind phrase, then
-  // recurrence (day-set, then single-unit), then a trailing due phrase
-  // — each stage only seeing what earlier stages left behind. This is
-  // read-only/cosmetic: it never changes what actually gets sent, so a
-  // gap between this and the real parser only affects what the preview
-  // shows, never what task gets created. Date-phrase coverage mirrors
-  // _parse_due_phrase's common shapes (today/tomorrow/weekday names/
-  // "in N days"/explicit dates); a phrase it doesn't recognize is just
-  // shown as-is, same "leave it as title text" fallback the real parser
-  // uses.
-  // -----------------------------------------------------------------
   const DAY_ABBRS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   const DAY_FULL = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -1109,9 +1118,44 @@ Water plants every 2 days</span>
     '\\s+(?:every\\s+(?:(\\d+)\\s+)?(days?|weekdays?|weeks?|months?|' + DAY_ALT + ')' +
     '|(daily|weekdays|weekly|monthly))' + AT_CLAUSE + STARTING_CLAUSE + '\\s*$', 'i');
 
-  // Tags — mirrors _QUICK_TAG_RE: a bare token (#work) or a quoted
-  // form (#"design system") that allows spaces/punctuation inside it.
-  // Matched anywhere in the text, not end-anchored.
+  // Recurring/hourly remind-phrase shapes — mirrors the desktop app's
+  // _resolve_recurring_reminder_phrase, tried before the one-off
+  // due-phrase interpretation of a "remind ..." tail (see
+  // parseQuickTaskPreview). Kept intentionally simpler than the real
+  // parser (no "starting"/"until"/"for N times"/active-hour-window
+  // clauses) since this only feeds a cosmetic preview badge — an
+  // unrecognized shape here just falls through to the one-off path,
+  // same "leave it as literal" fallback the real parser uses elsewhere.
+  const REMIND_HOURLY_RE = /^every\s+(\d+)\s*(?:hours?|hrs?|h)\s*$/i;
+  const REMIND_DAYSET_RE = new RegExp(
+    '^every\\s+(?:(\\d+)\\s+weeks?\\s+(?:on\\s+)?)?' +
+    '((?:' + DAY_ALT + ')(?:\\s*(?:,|/|&|and)\\s*(?:' + DAY_ALT + '))+)' +
+    AT_CLAUSE + '\\s*$', 'i');
+  const REMIND_RECUR_RE = new RegExp(
+    '^(?:every\\s+(?:(\\d+)\\s+)?(days?|weekdays?|weeks?|months?|' + DAY_ALT + ')' +
+    '|(daily|weekdays|weekly|monthly))' + AT_CLAUSE + '\\s*$', 'i');
+
+  function resolveRecurringRemindPreview(phrase, today) {
+    const p = phrase.trim();
+    let m = p.match(REMIND_HOURLY_RE);
+    if (m) return 'every ' + m[1] + 'h';
+    m = p.match(REMIND_DAYSET_RE);
+    if (m) {
+      const resolved = resolveQuickDayset(m[2], today);
+      if (resolved) {
+        const interval = m[1] ? Math.max(1, parseInt(m[1], 10)) : 1;
+        const labels = resolved[0].map((i) => DAY_LABELS[i]).join(', ');
+        return interval > 1 ? `every ${interval} weeks on ${labels}` : `every ${labels}`;
+      }
+    }
+    m = p.match(REMIND_RECUR_RE);
+    if (m) {
+      const resolved = resolveQuickRecurrence(m[1], m[2] || m[3], today);
+      if (resolved) return describeRecurrence(resolved[0], resolved[1], []);
+    }
+    return null;
+  }
+
   const QUICK_TAG_RE = /(?<!\w)#(?:"([^"]+)"|([A-Za-z0-9_][A-Za-z0-9_-]*))/g;
 
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -1130,7 +1174,7 @@ Water plants every 2 days</span>
     return new Date(year, month, Math.min(d.getDate(), lastDay));
   }
 
-  function pyDow(d) { return (d.getDay() + 6) % 7; } // 0=Mon..6=Sun, matching Python's date.weekday()
+  function pyDow(d) { return (d.getDay() + 6) % 7; }
 
   function monthIndex(tok) {
     let i = MONTHS_ABBR.indexOf(tok);
@@ -1269,10 +1313,6 @@ Water plants every 2 days</span>
     return [resolved !== null, resolved];
   }
 
-  // Trims, drops empties, and case-insensitively dedupes a list of tag
-  // strings, keeping the first-seen casing — a JS port of the desktop
-  // app's _clean_tag_list. So typing "Deep-Work" once is what's kept
-  // even if "deep-work" shows up again later in the same line.
   function cleanTagList(raw) {
     const seen = new Set();
     const cleaned = [];
@@ -1287,11 +1327,6 @@ Water plants every 2 days</span>
     return cleaned;
   }
 
-  // Pulls every #tag out of text (bare or quoted, see QUICK_TAG_RE),
-  // case-insensitively deduping with first-seen casing kept, and
-  // returns [tags, textWithTagsStripped] — a JS port of the tag-
-  // extraction step shared by _parse_quick_task_text and
-  // _parse_quick_idea_text.
   function extractQuickTags(text) {
     const raw = [];
     const stripped = text.replace(QUICK_TAG_RE, (m, qtag, tag) => {
@@ -1332,15 +1367,21 @@ Water plants every 2 days</span>
 
     stripped = stripped.replace(/\s{2,}/g, ' ').trim();
 
-    let reminderDate = null, reminderTime = null;
+    let reminderDate = null, reminderTime = null, reminderRecur = null;
     const remindMatch = stripped.match(/\s+remind(?:\s+me)?\s+(.+?)\s*$/i);
     if (remindMatch) {
-      const [remindPhrase, remindTime] = extractDueTime(remindMatch[1]);
-      const resolved = parseDuePhrase(remindPhrase, today);
-      if (resolved) {
-        reminderDate = resolved;
-        reminderTime = remindTime;
+      const recur = resolveRecurringRemindPreview(remindMatch[1], today);
+      if (recur) {
+        reminderRecur = recur;
         stripped = stripped.slice(0, remindMatch.index).trim();
+      } else {
+        const [remindPhrase, remindTime] = extractDueTime(remindMatch[1]);
+        const resolved = parseDuePhrase(remindPhrase, today);
+        if (resolved) {
+          reminderDate = resolved;
+          reminderTime = remindTime;
+          stripped = stripped.slice(0, remindMatch.index).trim();
+        }
       }
     }
 
@@ -1391,7 +1432,7 @@ Water plants every 2 days</span>
       }
     }
 
-    return { title, tags, category, priority, dueDate, dueTime, recurring, recurringInterval, recurringDays, reminderDate, reminderTime, subtasks };
+    return { title, tags, category, priority, dueDate, dueTime, recurring, recurringInterval, recurringDays, reminderDate, reminderTime, reminderRecur, subtasks };
   }
 
   function describeRecurrence(recurring, interval, days) {
@@ -1428,21 +1469,6 @@ Water plants every 2 days</span>
     return span;
   }
 
-  // -----------------------------------------------------------------
-  // Idea preview — a JS port of the desktop app's
-  // _parse_quick_idea_text (pomodoro_timer.py). Deliberately much
-  // simpler than parseQuickTaskPreview above: no due/recurrence/
-  // category parsing, since running that over an idea's own prose
-  // risks misreading a stray weekday name or number as scheduling info
-  // that was never meant. #tags (bare or quoted, see QUICK_TAG_RE) and
-  // an optional "!pin"/"!pinned" marker are the only structure pulled
-  // out — both are stripped from the saved text since they're
-  // metadata, not part of the note. ==highlight== markers are
-  // deliberately left untouched in the saved text (same as the desktop
-  // parser), so they're not stripped here either. Newlines collapse to
-  // a single space for this compact one-line preview chip only — the
-  // text that actually gets sent still has them.
-  // -----------------------------------------------------------------
   function parseIdeaPreview(raw) {
     const body = raw.startsWith('/') ? raw.slice(1) : raw;
     const [tags, afterTags] = extractQuickTags(body);
@@ -1501,8 +1527,6 @@ Water plants every 2 days</span>
       const row = document.createElement('div');
       row.className = 'preview-line';
 
-      // The index badge only earns its place once there's an actual
-      // sequence to number — one line, one task, no ordering to convey.
       if (lines.length > 1) {
         const indexEl = document.createElement('span');
         indexEl.className = 'preview-index';
@@ -1525,7 +1549,9 @@ Water plants every 2 days</span>
         if (parsed.dueTime) label += ' ' + formatTimeLabel(parsed.dueTime);
         row.appendChild(makeTag(label, 'due'));
       }
-      if (parsed.reminderDate) {
+      if (parsed.reminderRecur) {
+        row.appendChild(makeTag('remind ' + parsed.reminderRecur, 'remind'));
+      } else if (parsed.reminderDate) {
         let label = 'remind ' + formatDateLabel(parsed.reminderDate);
         if (parsed.reminderTime) label += ' ' + formatTimeLabel(parsed.reminderTime);
         row.appendChild(makeTag(label, 'remind'));
@@ -1537,13 +1563,6 @@ Water plants every 2 days</span>
     });
   }
 
-  // -----------------------------------------------------------------
-  // Syntax help overlay — a static cheat sheet for the parser rules
-  // above, since #tags/@category/due/every/remind/subtasks and their
-  // date-phrase vocabulary aren't at all discoverable from the chip
-  // row alone. Opens on tap, closes on the × button, tapping the dark
-  // backdrop, or Escape.
-  // -----------------------------------------------------------------
   const helpBtn = document.getElementById('helpBtn');
   const helpOverlay = document.getElementById('helpOverlay');
   const helpCloseBtn = document.getElementById('helpCloseBtn');
@@ -1560,6 +1579,14 @@ Water plants every 2 days</span>
     if (e.key === 'Escape' && helpOverlay.classList.contains('show')) closeHelp();
   });
 
+  // Light haptic feedback on the handful of moments that matter on a
+  // phone — a successful send, a tab switch, a swipe committing — never
+  // on every keystroke or chip tap, and always feature-detected since
+  // iOS Safari has no Vibration API at all.
+  function haptic(ms) {
+    if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} }
+  }
+
   const CONFIG = {
     ntfy: {
       topic: 'chronopomo-eadbb5a0e38f5b5fcb2c470655769006'
@@ -1568,13 +1595,6 @@ Water plants every 2 days</span>
 
   const statusEl = document.getElementById('status');
 
-  // Client-generated id for one captured message, carried to the PC
-  // via ntfy's Title header (see sendNtfy) rather than embedded in the
-  // message body — the body is exactly what the desktop parser reads
-  // as task/idea text, so anything id-related has to travel alongside
-  // it, not inside it. Used to match an ack back to the right queued
-  // item (see pollAcks) and to let the PC recognize a resend of the
-  // same message as "already handled" (see resendStaleUnconfirmed).
   function generateClientId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -1582,11 +1602,6 @@ Water plants every 2 days</span>
 
   async function sendNtfy(text, clientId) {
     const url = `https://ntfy.sh/${CONFIG.ntfy.topic}`;
-    // Without a timeout, a hung request (flaky connection, phone
-    // switching networks mid-request) never resolves or rejects —
-    // which used to mean flushQueue's `flushing` guard stayed true
-    // forever, silently wedging the entire offline queue until the
-    // page was reloaded. 15s is generous for a plain-text POST.
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
@@ -1602,55 +1617,15 @@ Water plants every 2 days</span>
     }
   }
 
-  // -----------------------------------------------------------------
-  // View tab — read-only snapshot of the PC's current task list.
-  // Fetch-on-open only, no live/streaming connection: reopening the
-  // tab or tapping Refresh re-fetches. Uses ntfy's poll mode (poll=1,
-  // since=latest) to grab the most recent published message rather
-  // than opening a held-open event stream, matching the fetch-once
-  // philosophy the spec calls for on this screen.
-  //
-  // Note: the desktop app also has a separate, independent "alert
-  // topic" for real push notifications (due/overdue tasks), but that's
-  // meant to be subscribed to from the actual ntfy phone app — not
-  // this page — so it has no counterpart here.
-  // -----------------------------------------------------------------
   const SNAPSHOT_CONFIG = {
-    // Independently-generated topic, separate from CONFIG.ntfy.topic
-    // above — this one grants *read* access to the whole task list,
-    // which is more sensitive than the write-only capture topic, so a
-    // leak of one must not expose the other. Replace with your own
-    // random topic (generated the same way as the capture one) before
-    // this screen will show anything.
     topic: 'chronopomo-snapshot-8a35b55e03d3edc2dbe6a24da139ad0d'
   };
 
-  // -----------------------------------------------------------------
-  // Delivery confirmation for the capture topic above. ntfy.sh only
-  // holds a message in cache for 12 hours (see docs.ntfy.sh/config —
-  // cache-duration defaults to 12h). If the PC app isn't running and
-  // connected within that window — laptop asleep overnight is the
-  // common case — a message this page successfully POSTed can still
-  // vanish off the server before the PC ever sees it, with no error on
-  // either side. This ack topic closes that gap: the PC publishes a
-  // short ack (echoing the client id above) once it's actually turned
-  // a message into a task, and until that ack arrives this page keeps
-  // the message in its own local "unconfirmed" store and periodically
-  // re-POSTs it (see resendStaleUnconfirmed) to refresh its age in
-  // ntfy's cache. Leave ACK_CONFIG.topic blank to turn this off — quick
-  // capture still works exactly as before, just without the
-  // missed-overnight protection.
-  // -----------------------------------------------------------------
   const ACK_CONFIG = {
-    // Paste the "ack topic" generated in the desktop app's Settings ▸
-    // Phone Quick-Add ▸ delivery-confirmation section.
     topic: 'chronopomo-ack-3d773337408e982769a25984ab2cad15'
   };
   const ACK_POLL_INTERVAL_MS = 30000;
-  const RESEND_AFTER_MS = 10 * 60 * 60 * 1000; // 10h — inside ntfy's 12h cache window
-  // A normal ack round-trip takes a few seconds; don't flash "waiting
-  // to send" in the UI for that — only surface an unconfirmed item once
-  // it's been outstanding long enough that something's actually amiss.
+  const RESEND_AFTER_MS = 10 * 60 * 60 * 1000;
   const UNCONFIRMED_UI_THRESHOLD_MS = 60000;
 
   const snapshotListEl = document.getElementById('snapshotList');
@@ -1663,9 +1638,9 @@ Water plants every 2 days</span>
     const res = await fetch(url);
     if (!res.ok) throw new Error('ntfy request failed: ' + res.status);
     const line = (await res.text()).trim();
-    if (!line) return { tasks: [], generated: null }; // nothing published yet
+    if (!line) return { tasks: [], generated: null };
     const msg = JSON.parse(line);
-    return JSON.parse(msg.message); // { tasks: [...], generated: <unix ts> }
+    return JSON.parse(msg.message);
   }
 
   function renderSnapshotList(tasks) {
@@ -1712,10 +1687,6 @@ Water plants every 2 days</span>
       renderSnapshotUpdated(snap.generated);
       snapshotLoaded = true;
     } catch (err) {
-      // Still show whatever we last had, if anything, but make the
-      // failure visible rather than silently leaving a stale/blank
-      // screen — same "make mistakes visible" honesty the capture
-      // screen already applies to failed sends.
       if (!snapshotLoaded) {
         snapshotListEl.innerHTML = '';
         const errEl = document.createElement('div');
@@ -1733,43 +1704,144 @@ Water plants every 2 days</span>
 
   viewRefreshBtn.addEventListener('click', refreshSnapshot);
 
-  // --- tab switching ---
+  // --- tab switching (button tap, or swipe — see below) ---
   const captureTabEl = document.getElementById('captureTab');
   const viewTabEl = document.getElementById('viewTab');
+  const tabBar = document.getElementById('tabBar');
+  const tabBtns = Array.from(document.querySelectorAll('.tab-btn'));
 
-  document.getElementById('tabBar').addEventListener('click', (e) => {
-    const tabBtn = e.target.closest('.tab-btn');
-    if (!tabBtn) return;
-    const tab = tabBtn.dataset.tab;
-
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === tabBtn));
+  function switchToTab(tab, opts) {
+    const silent = opts && opts.silent;
+    tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     captureTabEl.classList.toggle('active', tab === 'capture');
     viewTabEl.classList.toggle('active', tab === 'view');
-
+    if (!silent) haptic(8);
     if (tab === 'capture') {
       input.focus();
     } else if (tab === 'view' && !snapshotLoaded) {
-      // Fetch on first open of the tab, not on every switch back to
-      // it — a manual Refresh tap covers "I want the latest now".
       refreshSnapshot();
     }
+  }
+
+  tabBar.addEventListener('click', (e) => {
+    const tabBtn = e.target.closest('.tab-btn');
+    if (!tabBtn) return;
+    switchToTab(tabBtn.dataset.tab);
   });
 
-  // -----------------------------------------------------------------
-  // Local durable storage (IndexedDB). Two queues live here, both
-  // surviving a full page reload or the tab being killed:
-  //
-  //  - 'pending': a capture that failed to even leave the phone (no
-  //    network, or ntfy briefly unreachable at send time). Exactly the
-  //    original offline queue.
-  //  - 'unconfirmed': a capture that DID leave the phone (ntfy returned
-  //    200) but hasn't yet been acked by the PC. New — this is what
-  //    closes the "PC missed the 12h cache window" gap described above.
-  //
-  // A 'meta' store alongside them holds small key/value bits the
-  // Service Worker and the ack poller need across reloads (the current
-  // ntfy topic, and the ack stream's poll cursor).
-  // -----------------------------------------------------------------
+  // Horizontal swipe between Capture/View — a phone-native gesture on
+  // top of the existing tab buttons, not a replacement for them. Only
+  // engages once a touch has moved further horizontally than vertically
+  // (so it can't hijack the textarea's own vertical scroll or a normal
+  // tap), and yields entirely while the on-screen keyboard is up, since
+  // a swipe-to-dismiss-keyboard gesture there would fight this one.
+  const appShellEl = document.querySelector('.app-shell');
+  let touchStartX = null, touchStartY = null, swiping = false;
+
+  appShellEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    if (document.activeElement === input) return; // let text selection/scroll work normally
+    if (helpOverlay.classList.contains('show')) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    swiping = false;
+  }, { passive: true });
+
+  appShellEl.addEventListener('touchmove', (e) => {
+    if (touchStartX === null) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    if (!swiping && Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.5) swiping = true;
+  }, { passive: true });
+
+  appShellEl.addEventListener('touchend', (e) => {
+    if (touchStartX === null) return;
+    if (swiping) {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const currentlyCapture = captureTabEl.classList.contains('active');
+      if (dx < -40 && currentlyCapture) switchToTab('view');
+      else if (dx > 40 && !currentlyCapture) switchToTab('capture');
+    }
+    touchStartX = null; touchStartY = null; swiping = false;
+  });
+
+  // --- pull-to-refresh on the View tab ---
+  // Deliberately scoped to the View tab's own scroll container and only
+  // arms when that container is already scrolled to the top — pulling
+  // down mid-list just scrolls the list, exactly like every native app.
+  const pullIndicator = document.getElementById('pullIndicator');
+  const PULL_THRESHOLD = 64;
+  let pullStartY = null, pulling = false, pullDist = 0;
+
+  viewTabEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    if (snapshotListEl.scrollTop > 0) return;
+    pullStartY = e.touches[0].clientY;
+    pulling = false;
+    pullDist = 0;
+  }, { passive: true });
+
+  viewTabEl.addEventListener('touchmove', (e) => {
+    if (pullStartY === null) return;
+    const dy = e.touches[0].clientY - pullStartY;
+    if (dy <= 0) { pulling = false; pullIndicator.style.transform = ''; pullIndicator.classList.remove('show', 'ready'); return; }
+    if (snapshotListEl.scrollTop > 0) return;
+    pulling = true;
+    pullDist = Math.min(dy * 0.5, 90);
+    pullIndicator.classList.add('show');
+    pullIndicator.classList.toggle('ready', pullDist >= PULL_THRESHOLD);
+    pullIndicator.style.transform = `translateY(${pullDist}px)`;
+  }, { passive: true });
+
+  viewTabEl.addEventListener('touchend', () => {
+    if (pulling && pullDist >= PULL_THRESHOLD) {
+      haptic(10);
+      refreshSnapshot();
+    }
+    pulling = false;
+    pullDist = 0;
+    pullIndicator.style.transform = '';
+    pullIndicator.classList.remove('show', 'ready');
+    pullStartY = null;
+  });
+
+  // --- add-to-home-screen prompt ---
+  // Chrome/Android fires 'beforeinstallprompt' and lets a site defer +
+  // replay it from a custom control — this shell surfaces that as a
+  // small dismissible toast instead of the browser's own generic bar,
+  // so it matches the app's theme. iOS Safari never fires this event
+  // (there's no programmatic install prompt there), so the toast simply
+  // never appears on iOS — same as before this existed.
+  const installToast = document.getElementById('installToast');
+  const installBtn = document.getElementById('installBtn');
+  const installDismissBtn = document.getElementById('installDismissBtn');
+  let deferredInstallPrompt = null;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    if (localStorage && localStorage.getItem && localStorage.getItem('installToastDismissed') === '1') return;
+    deferredInstallPrompt = e;
+    installToast.classList.add('show');
+  });
+
+  installBtn.addEventListener('click', async () => {
+    installToast.classList.remove('show');
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => {});
+    deferredInstallPrompt = null;
+  });
+
+  installDismissBtn.addEventListener('click', () => {
+    installToast.classList.remove('show');
+    try { localStorage.setItem('installToastDismissed', '1'); } catch (e) {}
+  });
+
+  window.addEventListener('appinstalled', () => {
+    installToast.classList.remove('show');
+    deferredInstallPrompt = null;
+  });
+
   const DB_NAME = 'chronopomo-capture';
   const DB_VERSION = 2;
 
@@ -1843,9 +1915,6 @@ Water plants every 2 days</span>
     });
   }
 
-  // put() rather than add(): also used to refresh sentAt on a resend of
-  // an item that's already in this store (see resendStaleUnconfirmed),
-  // so it has to be an upsert, not an insert-only.
   async function putUnconfirmed(clientId, text, sentAt) {
     const db = await openDb();
     return new Promise((resolve, reject) => {
@@ -1876,7 +1945,6 @@ Water plants every 2 days</span>
     });
   }
 
-  // --- pending list UI ---
   const pendingBar = document.getElementById('pendingBar');
   const pendingBadge = document.getElementById('pendingBadge');
   const pendingChevron = document.getElementById('pendingChevron');
@@ -1922,11 +1990,6 @@ Water plants every 2 days</span>
     return row;
   }
 
-  // Shows two kinds of "not done yet" items side by side: still-queued
-  // (never left the phone) and sent-but-unconfirmed (ntfy accepted it,
-  // no ack from the PC yet). An unconfirmed item only appears once it's
-  // been outstanding past UNCONFIRMED_UI_THRESHOLD_MS, so a normal
-  // few-second ack round trip never causes a flash in this list.
   async function renderPendingList() {
     const pendingItems = await getPending();
     const unconfirmedItems = ACK_CONFIG.topic
@@ -1963,7 +2026,6 @@ Water plants every 2 days</span>
     pendingChevron.classList.toggle('open', pendingListOpen);
   });
 
-  // --- flushing the offline (never-sent) queue ---
   let flushing = false;
 
   async function flushQueue() {
@@ -1977,10 +2039,6 @@ Water plants every 2 days</span>
           await deletePending(item.id);
           if (ACK_CONFIG.topic) await putUnconfirmed(item.clientId, item.text, Date.now());
         } catch (err) {
-          // Still offline (or ntfy's briefly down) — stop here rather
-          // than hammer every remaining item; the next trigger (online
-          // event, visibility change, timer, or background sync) will
-          // pick up where this left off.
           break;
         }
       }
@@ -1990,7 +2048,6 @@ Water plants every 2 days</span>
     }
   }
 
-  // --- ack polling + resend for the sent-but-unconfirmed queue ---
   let polling = false;
 
   async function pollAcks() {
@@ -2020,22 +2077,12 @@ Water plants every 2 days</span>
       }
       if (lastId) await writeMeta('ackSince', lastId);
     } catch (err) {
-      // offline or ntfy hiccup — the next scheduled poll picks it back up
     } finally {
       polling = false;
       renderPendingList();
     }
   }
 
-  // Refreshes any unconfirmed item that's been waiting longer than
-  // RESEND_AFTER_MS by re-POSTing it with the SAME client id — this is
-  // what actually solves the missed-overnight problem: as long as the
-  // phone gets online at least once every ~10h, the message keeps
-  // getting its age in ntfy's 12h cache reset before it can expire, no
-  // matter how long the PC itself stays asleep. The PC's own dedup
-  // (keyed on that same client id, see _create_task_from_phone) is what
-  // keeps a late resend from ever creating a duplicate task once it
-  // finally does arrive.
   async function resendStaleUnconfirmed() {
     if (!ACK_CONFIG.topic || !navigator.onLine) return;
     const items = await getUnconfirmed();
@@ -2046,17 +2093,12 @@ Water plants every 2 days</span>
         await sendNtfy(item.text, item.clientId);
         await putUnconfirmed(item.clientId, item.text, now);
       } catch (err) {
-        break; // offline/ntfy down right now — try again next cycle
+        break;
       }
     }
   }
 
   function scheduleBackgroundSync() {
-    // Covers the case where the app/tab isn't open when connectivity
-    // comes back — e.g. phone was offline, PWA gets closed, network
-    // returns later. Feature-detected: Safari/iOS has no SyncManager,
-    // so this silently no-ops there and the online/visibility/timer
-    // triggers below are what carry the queue on those platforms.
     if ('serviceWorker' in navigator && 'SyncManager' in window) {
       navigator.serviceWorker.ready
         .then((reg) => reg.sync.register('flush-queue'))
@@ -2074,30 +2116,18 @@ Water plants every 2 days</span>
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') runAllQueueWork();
   });
-  // Soft fallback poll while the tab is actually open, since not every
-  // platform fires a reliable 'online' event and background sync isn't
-  // universal. flushQueue only does anything when something's queued;
-  // pollAcks/resendStaleUnconfirmed are cheap no-ops when ACK_CONFIG.topic
-  // is blank or there's nothing unconfirmed, so this is safe to run on a
-  // fixed interval regardless of what's currently pending.
   setInterval(runAllQueueWork, ACK_POLL_INTERVAL_MS);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
-  // A single in-flight flag guards every entry point into capture()
-  // (button tap AND the Cmd/Ctrl+Enter shortcut both call the same
-  // function — without this, firing both in quick succession, or
-  // double-tapping before the first send round-trips, queued the same
-  // text twice). btn.disabled alone isn't enough of a guard since it's
-  // reset mid-function in a couple of branches below.
   let sending = false;
 
   async function capture() {
     if (sending) return;
     const text = input.value.trim();
-    if (!text) return; // guard, mirrors button disabled state
+    if (!text) return;
 
     sending = true;
     btn.disabled = true;
@@ -2113,13 +2143,6 @@ Water plants every 2 days</span>
       await sendNtfy(text, clientId);
       if (ACK_CONFIG.topic) await putUnconfirmed(clientId, text, Date.now());
 
-      // Clear the field and hand focus back right away, rather than
-      // deferring it to the setTimeout below — that used to mean a
-      // person who started typing their next task during the 600ms
-      // "Captured" flash would have it silently wiped out from under
-      // them when the timeout finally fired and blindly reset
-      // input.value. The flash is now purely a button/status
-      // animation; it no longer touches the input at all.
       input.value = '';
       refreshButtonState();
       autoGrowTextarea();
@@ -2131,6 +2154,7 @@ Water plants every 2 days</span>
       statusEl.textContent = 'Sent';
       statusEl.className = 'status ok';
       setTomatoState('ok');
+      haptic(12);
 
       setTimeout(() => {
         btn.classList.remove('sent');
@@ -2138,15 +2162,10 @@ Water plants every 2 days</span>
         statusEl.textContent = '';
         statusEl.className = 'status';
         setTomatoState('idle');
-        // Re-derive disabled state instead of assuming empty: the
-        // person may already have typed the next task during the flash.
         refreshButtonState();
       }, 600);
 
     } catch (err) {
-      // Offline, or ntfy briefly unreachable — now that there's durable
-      // storage, save it there instead of leaving unsent text sitting
-      // only in the DOM (which a killed tab would lose outright).
       try {
         await queueCapture(text, clientId);
         input.value = '';
@@ -2160,20 +2179,12 @@ Water plants every 2 days</span>
         renderPendingList();
         scheduleBackgroundSync();
       } catch (dbErr) {
-        // IndexedDB itself unavailable (e.g. private browsing mode) —
-        // fall back to the old behavior: keep the text so nothing is
-        // silently lost, let the person retry by hand.
         btn.textContent = 'Capture';
         statusEl.textContent = 'Failed to send — text kept, try again';
         statusEl.className = 'status error';
         setTomatoState('error');
+        haptic([15, 40, 15]);
       } finally {
-        // Was previously a hardcoded `btn.disabled = false`, which
-        // re-enabled the button even on the queued path where the
-        // field had just been cleared — leaving a live-looking button
-        // that silently did nothing if tapped. Deriving it from actual
-        // content keeps the button's enabled state truthful in every
-        // branch.
         refreshButtonState();
       }
     } finally {
@@ -2183,8 +2194,6 @@ Water plants every 2 days</span>
 
   btn.addEventListener('click', capture);
 
-  // Cmd/Ctrl+Enter to send — convenient while testing on desktop,
-  // harmless on mobile where it simply won't be triggered
   input.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -2192,14 +2201,10 @@ Water plants every 2 days</span>
     }
   });
 
-  // Write the current topic to IndexedDB on every load so the Service
-  // Worker's background-sync handler always has the latest value, even
-  // if this file is redeployed with a different topic later.
   writeMeta('ntfyTopic', CONFIG.ntfy.topic).catch(() => {});
   renderPendingList();
   runAllQueueWork();
 
 </script>
-
 </body>
 </html>
