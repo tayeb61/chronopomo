@@ -40,6 +40,13 @@
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     overscroll-behavior: none;
+    /* No document-level scrolling at all — the shell below is pinned to
+       the exact visible (keyboard-aware) height and each tab scrolls its
+       own content internally. This is what keeps the send button and
+       the install toast from ever being shoved off-screen by the
+       browser's own "scroll the focused input into view" behavior
+       fighting our own keyboard-offset math. */
+    overflow: hidden;
   }
 
   body {
@@ -47,7 +54,12 @@
     flex-direction: row;
     justify-content: center;
     background: #0a0a0c;
-    min-height: 100dvh;
+    /* --app-vh is kept in sync with window.visualViewport.height by JS
+       (updateViewportMetrics) — falls back to 100dvh before JS runs and
+       on browsers without the API. Using height (not min-height) is the
+       point: the shell must shrink exactly when the keyboard opens, not
+       just grow if content is taller. */
+    height: var(--app-vh, 100dvh);
   }
 
   .app-shell {
@@ -55,10 +67,11 @@
     flex-direction: column;
     width: 100%;
     max-width: 480px;
-    min-height: 100dvh;
+    height: var(--app-vh, 100dvh);
     background: var(--bg);
     padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
              env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    overflow: hidden;
   }
 
   .header {
@@ -335,6 +348,9 @@
     gap: 8px;
     padding: 12px 20px 20px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+    min-height: 0;
   }
 
   .snapshot-item {
@@ -484,8 +500,21 @@
     background: var(--field-border);
   }
 
+  /* Everything above the send button, scrolling internally so the
+     button itself never has to move — see the html/body/.app-shell
+     height comments above. */
+  .capture-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .field-wrap {
     padding: 16px 20px 4px;
+    flex-shrink: 0;
   }
 
   .compose-card {
@@ -634,7 +663,8 @@
 
   .action-bar {
     padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0));
-    transition: transform 120ms ease;
+    flex-shrink: 0;
+    background: var(--bg);
   }
 
   button.send {
@@ -719,7 +749,13 @@
   .install-toast {
     position: fixed;
     left: 50%;
-    bottom: calc(18px + env(safe-area-inset-bottom, 0));
+    /* --keyboard-inset (kept live by updateViewportMetrics) pushes this
+       up above the on-screen keyboard on the same basis the app-shell
+       itself uses, instead of being anchored to the full, keyboard-
+       obscured layout viewport the way a plain fixed "bottom: 0" would
+       be — that mismatch was the actual cause of it clipping off the
+       top of the visible area. */
+    bottom: calc(18px + env(safe-area-inset-bottom, 0) + var(--keyboard-inset, 0px));
     transform: translate(-50%, 140%);
     width: calc(100% - 32px);
     max-width: 448px;
@@ -732,7 +768,7 @@
     padding: 12px 10px 12px 16px;
     box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
     z-index: 40;
-    transition: transform 220ms ease;
+    transition: transform 220ms ease, bottom 120ms ease;
   }
 
   .install-toast.show { transform: translate(-50%, 0); }
@@ -794,42 +830,46 @@
 
   <div class="tab-panel active" id="captureTab">
 
-    <div class="field-wrap">
-      <div class="compose-card">
-        <textarea
-          id="taskInput"
-          placeholder="What's on your mind?"
-          autocapitalize="sentences"
-          autocorrect="on"
-          spellcheck="true"
-          rows="1"
-        ></textarea>
+    <div class="capture-scroll" id="captureScroll">
+
+      <div class="field-wrap">
+        <div class="compose-card">
+          <textarea
+            id="taskInput"
+            placeholder="What's on your mind?"
+            autocapitalize="sentences"
+            autocorrect="on"
+            spellcheck="true"
+            rows="1"
+          ></textarea>
+        </div>
       </div>
+
+      <div class="chips-row" id="chipsRow">
+        <button type="button" class="chip idea-toggle" id="ideaToggleChip" data-insert="ideaToggle"><span class="glyph">/</span>idea</button>
+        <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
+        <button type="button" class="chip" data-mode="task" data-insert="category"><span class="glyph">@</span>category</button>
+        <button type="button" class="chip" data-mode="task" data-insert="priority"><span class="glyph">!</span>priority</button>
+        <button type="button" class="chip" data-mode="task" data-insert="due">due …</button>
+        <button type="button" class="chip" data-mode="task" data-insert="every">every …</button>
+        <button type="button" class="chip" data-mode="task" data-insert="remind">remind …</button>
+        <button type="button" class="chip" data-mode="task" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
+        <button type="button" class="chip" data-mode="idea" data-insert="highlight"><span class="glyph">=</span>highlight</button>
+        <button type="button" class="chip" data-mode="idea" data-insert="pin"><span class="glyph">!</span>pin</button>
+      </div>
+
+      <div class="preview-area" id="previewArea"></div>
+
+      <div class="status" id="status" aria-live="polite"></div>
+
+      <div class="pending-bar" id="pendingBar">
+        <span class="pending-badge" id="pendingBadge">0</span>
+        <span class="pending-label">Waiting to send</span>
+        <span class="pending-chevron" id="pendingChevron">▾</span>
+      </div>
+      <div class="pending-list" id="pendingList"></div>
+
     </div>
-
-    <div class="chips-row" id="chipsRow">
-      <button type="button" class="chip idea-toggle" id="ideaToggleChip" data-insert="ideaToggle"><span class="glyph">/</span>idea</button>
-      <button type="button" class="chip" data-insert="tag"><span class="glyph">#</span>tag</button>
-      <button type="button" class="chip" data-mode="task" data-insert="category"><span class="glyph">@</span>category</button>
-      <button type="button" class="chip" data-mode="task" data-insert="priority"><span class="glyph">!</span>priority</button>
-      <button type="button" class="chip" data-mode="task" data-insert="due">due …</button>
-      <button type="button" class="chip" data-mode="task" data-insert="every">every …</button>
-      <button type="button" class="chip" data-mode="task" data-insert="remind">remind …</button>
-      <button type="button" class="chip" data-mode="task" data-insert="subtasks"><span class="glyph">&gt;&gt;</span>subtasks</button>
-      <button type="button" class="chip" data-mode="idea" data-insert="highlight"><span class="glyph">=</span>highlight</button>
-      <button type="button" class="chip" data-mode="idea" data-insert="pin"><span class="glyph">!</span>pin</button>
-    </div>
-
-    <div class="preview-area" id="previewArea"></div>
-
-    <div class="status" id="status" aria-live="polite"></div>
-
-    <div class="pending-bar" id="pendingBar">
-      <span class="pending-badge" id="pendingBadge">0</span>
-      <span class="pending-label">Waiting to send</span>
-      <span class="pending-chevron" id="pendingChevron">▾</span>
-    </div>
-    <div class="pending-list" id="pendingList"></div>
 
     <div class="action-bar">
       <button class="send" id="sendBtn" disabled>Capture</button>
@@ -962,7 +1002,6 @@ Water plants every 2 days</span>
 <script>
   const input = document.getElementById('taskInput');
   const btn = document.getElementById('sendBtn');
-  const actionBar = document.querySelector('.action-bar');
   const tomatoMark = document.getElementById('tomatoMark');
 
   function setTomatoState(state) {
@@ -974,21 +1013,43 @@ Water plants every 2 days</span>
     btn.disabled = !hasContent;
   }
 
-  function autoGrowTextarea() {
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, window.innerHeight * 0.45) + 'px';
-  }
-
-  function positionActionBar() {
-    if (!window.visualViewport) return;
+  // Keeps two CSS custom properties in sync with the real, keyboard-
+  // aware visible area:
+  //   --app-vh          the height the shell (and both tabs) should be —
+  //                      window.visualViewport.height, which shrinks the
+  //                      moment the on-screen keyboard opens.
+  //   --keyboard-inset   how much of the *layout* viewport the keyboard
+  //                      is currently covering — used only by fixed-
+  //                      position overlays outside the shell (the
+  //                      install toast) that aren't shrunk by --app-vh.
+  // This replaces the old approach of translateY-ing the send button by
+  // the keyboard height on top of a page that could also be scrolled by
+  // the browser's own "scroll the focused field into view" behavior —
+  // the two adjustments stacked and could push the button (and the
+  // toast) up past the top of the screen entirely. Resizing the shell
+  // itself to the true visible height, with the button as a fixed,
+  // non-scrolling flex child and everything else scrolling internally,
+  // means there's only ever one source of truth for "how tall is the
+  // visible area right now."
+  function updateViewportMetrics() {
     const vv = window.visualViewport;
-    const keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    actionBar.style.transform = keyboardInset > 0 ? `translateY(-${keyboardInset}px)` : '';
+    const vh = vv ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty('--app-vh', vh + 'px');
+    const keyboardInset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--keyboard-inset', keyboardInset + 'px');
   }
 
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', positionActionBar);
-    window.visualViewport.addEventListener('scroll', positionActionBar);
+    window.visualViewport.addEventListener('resize', updateViewportMetrics);
+    window.visualViewport.addEventListener('scroll', updateViewportMetrics);
+  }
+  window.addEventListener('resize', updateViewportMetrics);
+  window.addEventListener('orientationchange', updateViewportMetrics);
+
+  function autoGrowTextarea() {
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, vh * 0.4) + 'px';
   }
 
   input.addEventListener('input', () => {
@@ -1001,10 +1062,10 @@ Water plants every 2 days</span>
   window.addEventListener('load', () => {
     input.value = '';
     refreshButtonState();
+    updateViewportMetrics();
     autoGrowTextarea();
     updateChipsVisibility();
     renderPreview();
-    positionActionBar();
     input.focus();
   });
 
